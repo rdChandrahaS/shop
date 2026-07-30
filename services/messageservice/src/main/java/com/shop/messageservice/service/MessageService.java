@@ -1,8 +1,10 @@
-package com.shop.messageservice.pubisher;
+package com.shop.messageservice.service;
 
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
+
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -10,7 +12,7 @@ import lombok.extern.slf4j.Slf4j;
 @Service
 @RequiredArgsConstructor
 @Slf4j
-public class RabbitMQProducer {
+public class MessageService {
 	
 	@Value("${rabbitmq.exchange.name}")
 	private String exchangeName;
@@ -20,8 +22,9 @@ public class RabbitMQProducer {
 	
 	private final RabbitTemplate rabbitTemplate;
 	
-	public void sndMessage(String message) {
+	public ResponseEntity<String> sendMessage(String message) {
 		log.info("Message sent : {}", message);
 		rabbitTemplate.convertAndSend(exchangeName , routingKey , message);
+		return ResponseEntity.ok("Message sent to ");
 	}
 }
