@@ -1,5 +1,7 @@
 package com.shop.orderingservice.controller;
 
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -8,13 +10,11 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
-// import org.springframework.security.core.annotation.AuthenticationPrincipal;
-// import org.springframework.security.access.prepost.PreAuthorize;
-// import org.springframework.security.core.Authentication;
-// import org.springframework.security.core.context.SecurityContextHolder;
-// import org.springframework.security.oauth2.jwt.Jwt;
-// import org.springframework.web.server.ResponseStatusException;
-// import org.springframework.http.HttpStatus;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.web.server.ResponseStatusException;
+import org.springframework.http.HttpStatus;
 
 import com.shop.orderingservice.model.Order;
 import com.shop.orderingservice.model.enums.OrderStatus;
@@ -27,43 +27,38 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public class OrderController {
 
-	private final OrderService orderService;
+    private final OrderService orderService;
 
-
-    //@PreAuthorize("hasAnyRole('ADMIN', 'USER')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'USER')")
     @PostMapping
-    public Order placeOrder(@RequestBody Order newOrder) { //, @AuthenticationPrincipal Jwt jwt) {
+    public Order placeOrder(@RequestBody Order newOrder, @AuthenticationPrincipal Jwt jwt) {
         
-        /**
-        // Once security is re-enabled, you should override the customer ID 
-        // provided in the JSON body with the ID from the trusted JWT token 
-        // to prevent users from placing orders on behalf of other people.
         String tokenUserId = jwt.getSubject(); 
         if (newOrder.getCustomerDetails() != null) {
             newOrder.getCustomerDetails().setCustomerId(tokenUserId);
         }
-        **/
-
-        // Pass the order to the service layer to deduct inventory and process payment
+        
         return orderService.processAndPlaceOrder(newOrder);
     }
 
-
-	@GetMapping("/{orderId}/status")
-    //@PreAuthorize("hasAnyRole('ADMIN', 'USER')")
-    public OrderStatus getOrderStatus(@PathVariable("orderId") String orderId ) {//, @AuthenticationPrincipal Jwt jwt) {
+    @GetMapping("/{orderId}/status")
+    @PreAuthorize("hasAnyRole('ADMIN', 'USER')")
+    public OrderStatus getOrderStatus(@PathVariable("orderId") String orderId, @AuthenticationPrincipal Jwt jwt) {
         
         // 1. Fetch the order from the database
         Order order = orderService.findById(orderId);
         
-        /**
         // 2. Extract the unique ID of the person making the request from the token
         String tokenUserId = jwt.getSubject(); 
         
         // 3. Check if the current user has the ADMIN role
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-        boolean isAdmin = authentication.getAuthorities().stream()
-                .anyMatch(auth -> auth.getAuthority().equals("ROLE_ADMIN"));
+        boolean isAdmin = authentication.getAuthorities()
+        								.stream()
+        								.anyMatch(
+        										auth -> auth.getAuthority()
+        													.equals("ROLE_ADMIN")
+        								);
 
         // 4. Implement Resource Ownership Logic
         if (!isAdmin && !order.getCustomerDetails().getCustomerId().equals(tokenUserId)) {
@@ -72,16 +67,13 @@ public class OrderController {
                 "You do not have permission to view another customer's order."
             );
         }
-		**/
         
-        // 5. If it passes all checks, return the data
         return order.getOrderStatus();
     }
-
     
-	//@PreAuthorize("hasRole('ADMIN')")
-	@PatchMapping("/{orderId}/status")
-	public Order updateOrderStatus(@PathVariable("orderId") String orderId, @RequestParam("newStatus") OrderStatus newStatus) {
-		return orderService.updateStatus(orderId, newStatus);
-	}
+    @PreAuthorize("hasRole('ADMIN')")
+    @PatchMapping("/{orderId}/status")
+    public Order updateOrderStatus(@PathVariable("orderId") String orderId, @RequestParam("newStatus") OrderStatus newStatus) {
+        return orderService.updateStatus(orderId, newStatus);
+    }
 }

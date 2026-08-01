@@ -14,5 +14,5 @@ import java.util.Optional;
 public interface OrderRepository extends MongoRepository<Order, String> {
     
     Optional<Order> findById(String id);
-    //Page<Order> findByCustomer_CustomerId(String customerId, Pageable pageable);
+    Page<Order> findByCustomer_CustomerId(String customerId, Pageable pageable);
 }

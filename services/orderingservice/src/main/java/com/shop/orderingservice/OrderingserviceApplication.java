@@ -10,7 +10,7 @@ import com.shop.orderingservice.config.PaginationConfig;
 
 @SpringBootApplication
 @EnableConfigurationProperties({PaginationConfig.class})
-//@EnableFeignClients
+@EnableFeignClients
 public class OrderingserviceApplication {
 
 	public static void main(String[] args) {

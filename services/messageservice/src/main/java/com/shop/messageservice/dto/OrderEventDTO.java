@@ -1,0 +1,22 @@
+package com.shop.messageservice.dto;
+
+import java.util.List;
+
+import com.shop.messageservice.dto.enums.OrderStatus;
+
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+public class OrderEventDTO {
+	
+	private String orderId;
+	private OrderStatus status;	
+	private String message;
+	private double totalAmount;    
+    private CustomerDTO customer;
+    private List<OrderItemDTO> items;
+}

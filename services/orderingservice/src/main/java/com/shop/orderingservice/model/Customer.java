@@ -8,7 +8,9 @@ import lombok.Setter;
 @Setter
 @NoArgsConstructor
 public class Customer {
+	
     private String customerId;
     private String name;
+    private String email;
     private String phoneNo;
 }

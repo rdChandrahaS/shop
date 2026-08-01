@@ -1,0 +1,29 @@
+syntax = "proto3";
+
+package orderingservice;
+
+// This tells Protobuf where to generate the Java classes
+option java_package = "com.shop.orderingservice.protobuf";
+// This generates a separate Java file for each message, keeping your code clean
+option java_multiple_files = true;
+
+message CustomerProto {
+  string name = 1;
+  string email = 2;
+  string phone_no = 3;
+}
+
+message OrderItemProto {
+  string name = 1;
+  int32 quantity = 2;
+  double price_per_unit = 3;
+}
+
+message OrderEventProto {
+  string order_id = 1;
+  string status = 2;
+  string message = 3;
+  double total_amount = 4;
+  CustomerProto customer = 5;
+  repeated OrderItemProto items = 6;
+}
