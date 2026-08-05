@@ -24,6 +24,6 @@ public class Order {
     private LocalDateTime orderDate;
     private OrderStatus orderStatus;
     private Double totalAmount;
-    private Customer customerDetails; 
+    private Customer customer; 
     private List<OrderItem> orderDetails; 
 }

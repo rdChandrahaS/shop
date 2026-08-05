@@ -6,6 +6,7 @@ import org.springframework.security.config.annotation.method.configuration.Enabl
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
+import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 
@@ -25,7 +26,7 @@ public class SecurityConfig {
 		
 		http
 			.csrf(AbstractHttpConfigurer::disable) // Disable CSRF because we are not using browser cookies/sessions
-			.sessionManagement(session -> session.sessionCreationPolicy(null)) // Make the application completely stateless
+			.sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
 			.authorizeHttpRequests(auth -> auth
 	                .requestMatchers("/payment/webhook").permitAll() // 1. MUST BE PUBLIC: Razorpay needs to hit this without a JWT
 	              	.requestMatchers("/payment/process").authenticated() // 2. MUST BE SECURED: Only internal Gateway traffic should hit this

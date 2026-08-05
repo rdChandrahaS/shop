@@ -27,7 +27,7 @@ public class RabbitMQConfig {
 	//Spring Bean for RabbitMQ Queue
 	@Bean
 	public Queue queue() {
-		return new Queue(queueName);
+		return new Queue(queueName, true);
 	}
 	
 	//Spring bean for RabbitMQ Exchange

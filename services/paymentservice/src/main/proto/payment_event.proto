@@ -1,0 +1,20 @@
+syntax = "proto3";
+
+package paymentservice;
+
+// This tells Protobuf where to generate the Java classes
+option java_package = "com.shop.paymentservice.protobuf";
+// This generates a separate Java file for each message, keeping your code clean
+option java_multiple_files = true;
+
+message PaymentRequestProto {
+  string id = 1;
+  String mode = 2;
+  double amount = 3;
+}
+
+message PaymentResponseProto {
+  string status = 1;
+  String transactionId = 2;
+  double amountProcessed = 3;
+}

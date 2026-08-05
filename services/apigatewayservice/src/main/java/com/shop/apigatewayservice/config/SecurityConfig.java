@@ -20,9 +20,9 @@ public class SecurityConfig {
 							"/auth/**",
 							"/foods/**"
 					).permitAll()
-					.anyExchange().authenticated()
-					)
-			.oauth2ResourceServer(oauth2 -> oauth2.jwt(org.springframework.security.config.Customizer.withDefaults()));
+					.anyExchange()
+					.authenticated()
+			).oauth2ResourceServer(oauth2 -> oauth2.jwt(org.springframework.security.config.Customizer.withDefaults()));
 
 			
 		return http.build();

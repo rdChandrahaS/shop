@@ -1,0 +1,27 @@
+syntax = "proto3";
+
+package authservice;
+
+// This tells Protobuf where to generate the Java classes
+option java_package = "com.shop.authservice.protobuf";
+// This generates a separate Java file for each message, keeping your code clean
+option java_multiple_files = true;
+
+message AuthResponseProto {
+	string token = 1;
+	string id = 2;
+	string username = 3;
+}
+
+message LoginRequestProto {
+  	string username = 1;
+	string password = 2;
+}
+
+message RegisterRequestProto {
+  string username = 1;
+  string email = 2;
+  string name = 3;
+  string password = 4;
+  repeated string roles = 5;
+}

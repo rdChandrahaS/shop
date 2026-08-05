@@ -1,6 +1,6 @@
 package com.shop.apigatewayservice.config;
 
-import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.cors.CorsConfiguration;
@@ -11,13 +11,15 @@ import java.util.Arrays;
 import java.util.List;
 
 @Configuration
+@ConfigurationProperties(prefix = "app.security.cors")
 public class CorsConfig {
 
-    @Value("${app.security.cors.allowed-origins}")
     private List<String> allowedOrigins;
-
-    @Value("${app.security.cors.max-age}")
     private Long maxAge;
+
+    // Getters and Setters are required for property binding
+    public void setAllowedOrigins(List<String> allowedOrigins) { this.allowedOrigins = allowedOrigins; }
+    public void setMaxAge(Long maxAge) { this.maxAge = maxAge; }
 
     @Bean
     public CorsWebFilter corsWebFilter() {
@@ -26,7 +28,7 @@ public class CorsConfig {
         corsConfig.setAllowedOrigins(allowedOrigins); 
         corsConfig.setMaxAge(maxAge);
         
-        corsConfig.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS", "QUERY"));
+        corsConfig.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"));
         corsConfig.setAllowedHeaders(List.of("*"));
         corsConfig.setAllowCredentials(true); 
 
