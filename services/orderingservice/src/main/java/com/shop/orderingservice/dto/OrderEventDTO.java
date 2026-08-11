@@ -19,4 +19,5 @@ public class OrderEventDTO {
 	private double totalAmount;    
     private CustomerDTO customer;
     private List<OrderItemDTO> items;
+    private String mode;
 }

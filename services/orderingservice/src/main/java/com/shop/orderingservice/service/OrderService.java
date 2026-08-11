@@ -17,6 +17,7 @@ import org.springframework.transaction.annotation.Transactional;
 import com.shop.orderingservice.client.PaymentClient;
 import com.shop.orderingservice.config.PaginationConfig;
 import com.shop.orderingservice.dto.OrderEventDTO;
+import com.shop.orderingservice.dto.PaymentRequest;
 import com.shop.orderingservice.dto.PaymentResponse;
 import com.shop.orderingservice.model.Customer;
 import com.shop.orderingservice.model.Inventory;
@@ -36,7 +37,6 @@ import lombok.RequiredArgsConstructor;
 public class OrderService {
 
     private final OrderRepository orderRepository;
-    private final PaymentClient paymentClient;
     private final InventoryRepository inventoryRepository;
     private final RabbitTemplate rabbitTemplate;
     private final PaginationConfig paginationConfig;
@@ -99,18 +99,14 @@ public class OrderService {
         }
 
         // 3. PROCESS PAYMENT
-        PaymentResponse response;
-        try {
-            response = paymentClient.processPayment(
-                                        savedOrder.getCustomer().getCustomerId(),
-                                        savedOrder.getTotalAmount()
-                                    );
-        } catch (Exception e) {
-            // Handle network timeouts/errors
-            revertInventory(newOrder);
-            savedOrder.setOrderStatus(OrderStatus.CANCELLED);
-            return orderRepository.save(savedOrder);
-        }
+        PaymentRequest request = new PaymentRequest(
+        		savedOrder.getOrderId(),
+                tokenUserId,
+                savedOrder.getTotalAmount(),
+                orderRequest.getMode()
+        );
+        
+        rabbitTemplate.convertAndSend(exchangeName, null, null);
 
         // 4. HANDLE OUTCOME
         if (response.isSuccess()) {
