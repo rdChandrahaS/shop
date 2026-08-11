@@ -14,19 +14,14 @@ import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import com.shop.orderingservice.client.PaymentClient;
 import com.shop.orderingservice.config.PaginationConfig;
 import com.shop.orderingservice.dto.OrderEventDTO;
-import com.shop.orderingservice.dto.PaymentRequest;
-import com.shop.orderingservice.dto.PaymentResponse;
 import com.shop.orderingservice.model.Customer;
 import com.shop.orderingservice.model.Inventory;
 import com.shop.orderingservice.model.Order;
 import com.shop.orderingservice.model.OrderItem;
 import com.shop.orderingservice.model.enums.OrderStatus;
-import com.shop.orderingservice.protobuf.CustomerProto;
-import com.shop.orderingservice.protobuf.OrderEventProto;
-import com.shop.orderingservice.protobuf.OrderItemProto;
+import com.shop.orderingservice.protobuf.PaymentRequestProto;
 import com.shop.orderingservice.repo.InventoryRepository;
 import com.shop.orderingservice.repo.OrderRepository;
 
@@ -45,7 +40,7 @@ public class OrderService {
     private String exchangeName;
     
     @Value("${rabbitmq.routing.key}")
-    private String routingKey;
+    private String requestRoutingKey;
 
     public Order findById(String orderId) {
         return orderRepository.findById(orderId)
@@ -86,7 +81,7 @@ public class OrderService {
         // 2. DEDUCT INVENTORY (Fast Transaction)
         deductInventory(newOrder);
 
-        // Save order as pending
+        // 3. Save order as pending
         newOrder.setOrderStatus(OrderStatus.PENDING);
         newOrder.setOrderDate(LocalDateTime.now());
         Order savedOrder;
@@ -98,57 +93,28 @@ public class OrderService {
             throw new RuntimeException("Failed to save order to database", e);
         }
 
-        // 3. PROCESS PAYMENT
-        PaymentRequest request = new PaymentRequest(
-        		savedOrder.getOrderId(),
-                tokenUserId,
-                savedOrder.getTotalAmount(),
-                orderRequest.getMode()
+/*
+        // 4. Asynchronously send Payment Request via RabbitMQ
+        PaymentRequest paymentRequest = new PaymentRequest(
+            savedOrder.getOrderId(),
+            tokenUserId,
+            savedOrder.getTotalAmount(),
+            orderRequest.getMode()
         );
+*/
         
-        rabbitTemplate.convertAndSend(exchangeName, null, null);
+        // 4. Asynchronously send Payment Request via Protobuf Binary
+        PaymentRequestProto paymentRequestProto = PaymentRequestProto.newBuilder()
+            .setOrderId(savedOrder.getOrderId())
+            .setCustomerId(tokenUserId)
+            .setAmount(savedOrder.getTotalAmount())
+            .setPaymentMode(orderRequest.getMode())
+            .build();
 
-        // 4. HANDLE OUTCOME
-        if (response.isSuccess()) {
-            savedOrder.setOrderStatus(OrderStatus.CONFIRMED);
-            Order finalOrder = orderRepository.save(savedOrder);
-            
-            // Build the Protobuf Customer
-            CustomerProto customerProto = CustomerProto.newBuilder()
-                                        .setName(finalOrder.getCustomer().getName())
-                                        .setEmail(finalOrder.getCustomer().getEmail())
-                                        .setPhoneNo(finalOrder.getCustomer().getPhoneNo())
-                                        .build();
+        // Send raw bytes through RabbitMQ using the routing key
+        rabbitTemplate.convertAndSend(exchangeName, requestRoutingKey, paymentRequestProto.toByteArray());
 
-            // Build the Protobuf OrderEvent
-            OrderEventProto.Builder eventBuilder = OrderEventProto.newBuilder()
-                                                    .setOrderId(finalOrder.getOrderId())
-                                                    .setStatus(finalOrder.getOrderStatus().name())
-                                                    .setMessage("Your payment was successful!")
-                                                    .setTotalAmount(finalOrder.getTotalAmount())
-                                                    .setCustomer(customerProto);
-            
-            // Add each item to the repeated items list
-            finalOrder.getOrderDetails().forEach(item -> {
-                eventBuilder.addItems(
-                    OrderItemProto.newBuilder()
-                        .setName(item.getName())
-                        .setQuantity(item.getQuantity())
-                        .setPricePerUnit(item.getPricePerUnit())
-                        .build()
-                );
-            });
-            
-            OrderEventProto event = eventBuilder.build();
-            rabbitTemplate.convertAndSend(exchangeName, routingKey, event.toByteArray());
-            
-            return finalOrder;
-        } else {
-            // Compensation: Put the stock back manually!
-            revertInventory(newOrder);
-            savedOrder.setOrderStatus(OrderStatus.CANCELLED);
-            return orderRepository.save(savedOrder);
-        }
+        return savedOrder;
     }
 
     public void deductInventory(Order order) {
