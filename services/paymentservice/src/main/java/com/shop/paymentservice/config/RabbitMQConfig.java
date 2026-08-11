@@ -1,4 +1,4 @@
-package com.shop.orderingservice.config;
+package com.shop.paymentservice.config;
 
 import org.springframework.amqp.core.Binding;
 import org.springframework.amqp.core.BindingBuilder;
@@ -38,8 +38,7 @@ public class RabbitMQConfig {
 	
 	@Value("${rabbitmq.dlq.routing.key}")
 	private String DLQ_ROUTING_KEY;
-    
-    
+	
 	@Bean
 	public DirectExchange deadLetterExchange() {
 		return new DirectExchange(DLX_NAME);
