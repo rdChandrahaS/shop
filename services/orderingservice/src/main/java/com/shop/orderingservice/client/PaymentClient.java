@@ -6,7 +6,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 
 import com.shop.orderingservice.dto.PaymentResponse;
 
-@FeignClient(name="PAYMENT-SERVICE" , url="${payment.client.url}")
+@FeignClient(name="paymentservice")
 public interface PaymentClient {
     @PostMapping("/api/payment/process")
     PaymentResponse processPayment(@RequestParam("customerId") String customerId, @RequestParam("amount") double amount);
