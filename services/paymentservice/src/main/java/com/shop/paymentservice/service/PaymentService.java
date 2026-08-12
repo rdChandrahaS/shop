@@ -13,6 +13,8 @@ import org.springframework.stereotype.Service;
 import com.razorpay.Utils;
 import com.shop.paymentservice.dto.PaymentRequest;
 import com.shop.paymentservice.dto.PaymentResponse;
+import com.shop.paymentservice.exception.DuplicatePaymentException;
+import com.shop.paymentservice.exception.PaymentNotFoundException;
 import com.shop.paymentservice.model.Payment;
 import com.shop.paymentservice.model.enums.PaymentMode;
 import com.shop.paymentservice.model.enums.PaymentStatus;
@@ -40,8 +42,8 @@ public class PaymentService {
 		String lockKey = "payment:lock:" + request.getId();
 		Boolean isProcessing = redisTemplate.execute(paymentLockScript , List.of(lockKey) , "300"); //300 seconds for payment
 		if(Boolean.FALSE.equals(isProcessing)) {
-			log.warn("Duplicate payment attempt blocked for Order ID: {}", request.getId());
-            throw new IllegalStateException("A payment is already processing for this order.");
+		    log.warn("Duplicate payment attempt blocked for Order ID: {}", request.getId());
+		    throw new DuplicatePaymentException("A payment is already processing for this order.");
 		}
 		
 		PaymentStrategy strategy = paymentStrategies.get(request.getMode().name());
@@ -100,7 +102,8 @@ public class PaymentService {
             	String razorPayOrderID = paymentEntity.getString("order_id");
             	
             	Payment payment = paymentRepo.findByTransactionId(razorPayOrderID)
-            								 .orElseThrow(() -> new RuntimeException("Payment Not Found"));
+            	        .orElseThrow(() -> new PaymentNotFoundException("Payment Not Found"));
+            	
             	payment.setStatus(PaymentStatus.SUCCESS);
             	paymentRepo.save(payment);
             	
@@ -113,7 +116,7 @@ public class PaymentService {
 	
 	public ResponseEntity<String> requestRefund(String orderId,String reason){
 		Payment payment = paymentRepo.findById(orderId)
-									 .orElseThrow(() -> new RuntimeException("Invalid OrderID!"));
+		        .orElseThrow(() -> new PaymentNotFoundException("Invalid OrderID!"));
 		
 		if (payment.getStatus() != PaymentStatus.SUCCESS) {
 			log.info("Asking Refund For Unsuccessful Payment.");
@@ -134,7 +137,7 @@ public class PaymentService {
 	public ResponseEntity<String> approveRefund(String orderId) {
 		
 		Payment payment = paymentRepo.findById(orderId)
-									 .orElseThrow(()-> new RuntimeException("No Order Found"));
+		        .orElseThrow(()-> new PaymentNotFoundException("No Order Found"));
 	    
 	    if (payment.getStatus() != PaymentStatus.REFUND_REQUESTED) {
 	        return ResponseEntity.badRequest().body("Payment is not pending a refund.");

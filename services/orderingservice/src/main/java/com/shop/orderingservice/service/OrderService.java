@@ -16,6 +16,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.shop.orderingservice.config.PaginationConfig;
 import com.shop.orderingservice.dto.OrderEventDTO;
+import com.shop.orderingservice.exception.InsufficientInventoryException;
+import com.shop.orderingservice.exception.OrderNotFoundException;
 import com.shop.orderingservice.model.Customer;
 import com.shop.orderingservice.model.Inventory;
 import com.shop.orderingservice.model.Order;
@@ -45,7 +47,7 @@ public class OrderService {
     public Order findById(String orderId) {
         return orderRepository.findById(orderId)
                 .orElseThrow(
-                        () -> new RuntimeException("Order not found with ID: " + orderId)
+                        () -> new OrderNotFoundException("Order not found with ID: " + orderId)
                 );
     }
     
@@ -119,7 +121,7 @@ public class OrderService {
 
     public void deductInventory(Order order) {
         if (order.getOrderDetails() == null || order.getOrderDetails().isEmpty()) {
-            throw new RuntimeException("Order details cannot be empty!");
+        	throw new IllegalArgumentException("Order details cannot be empty!");
         }
         
         Map<Long, Integer> itemQuantities = order.getOrderDetails().stream()
@@ -134,7 +136,7 @@ public class OrderService {
         for (Inventory stock : stocks) {
             int required = itemQuantities.get(stock.getFoodId());
             if (stock.getAvailableAmount() < required) {
-                throw new RuntimeException("Out of stock: " + stock.getFoodName());
+                throw new InsufficientInventoryException("Out of stock: " + stock.getFoodName());
             }
             stock.setAvailableAmount(stock.getAvailableAmount() - required);
         }
@@ -157,7 +159,7 @@ public class OrderService {
 
     public Order updateStatus(String orderId, OrderStatus newStatus) {
         Order order = orderRepository.findById(orderId)
-                .orElseThrow(() -> new RuntimeException("Order not found with ID: " + orderId));
+                .orElseThrow(() -> new OrderNotFoundException("Order not found with ID: " + orderId));
         order.setOrderStatus(newStatus);
         return orderRepository.save(order);
     }

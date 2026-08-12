@@ -8,13 +8,15 @@ option java_package = "com.shop.paymentservice.protobuf";
 option java_multiple_files = true;
 
 message PaymentRequestProto {
-  string id = 1;
-  String mode = 2;
+  string order_id = 1;
+  string customer_id = 2;
   double amount = 3;
+  string payment_mode = 4;
 }
 
 message PaymentResponseProto {
-  string status = 1;
-  String transactionId = 2;
-  double amountProcessed = 3;
+  string order_id = 1;
+  string transaction_id = 2;
+  bool success = 3;
+  string message = 4;
 }

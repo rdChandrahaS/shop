@@ -36,8 +36,8 @@ public class GatewayAuthenticationFilter extends OncePerRequestFilter{
 		    
 			UsernamePasswordAuthenticationToken token = new UsernamePasswordAuthenticationToken(userId, null, authorities);
 			SecurityContextHolder.getContext().setAuthentication(token);
-			filterChain.doFilter(request, response); // Continue the filter
 		}
+		filterChain.doFilter(request, response); // Continue the filter
 	}
 
 }

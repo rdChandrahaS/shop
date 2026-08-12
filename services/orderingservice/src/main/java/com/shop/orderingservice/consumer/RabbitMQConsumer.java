@@ -3,6 +3,7 @@ package com.shop.orderingservice.consumer;
 import org.springframework.amqp.rabbit.annotation.RabbitListener;
 import org.springframework.stereotype.Service;
 
+import com.shop.orderingservice.exception.OrderNotFoundException;
 import com.shop.orderingservice.model.Order;
 import com.shop.orderingservice.model.enums.OrderStatus;
 import com.shop.orderingservice.protobuf.PaymentResponseProto;
@@ -28,7 +29,7 @@ public class RabbitMQConsumer {
 			log.info("Received Payment Result for Order ID {}: Success={}", response.getOrderId(), response.getSuccess());
 
 			Order order = orderRepository.findById(response.getOrderId())
-					.orElseThrow(() -> new RuntimeException("Order not found: " + response.getOrderId()));
+					.orElseThrow(() -> new OrderNotFoundException("Order not found: " + response.getOrderId()));
 
 			if (response.getSuccess()) {
 				order.setOrderStatus(OrderStatus.CONFIRMED);
