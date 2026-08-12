@@ -1,4 +1,4 @@
-for service in apigatewayservice authservice foodservice orderingservice paymentservice serviceregistry; 
+for service in apigatewayservice authservice foodservice orderingservice paymentservice serviceregistry messageservice; 
 do
     echo "========================================"
     echo "BUILDING $service"

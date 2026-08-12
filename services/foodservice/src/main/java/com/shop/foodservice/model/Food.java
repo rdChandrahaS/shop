@@ -24,7 +24,7 @@ public class Food {
 	private String foodName;
 	
 	@Column(name="food_description")
-	private String foodDecription;
+	private String foodDescription;
 	
 	@Column(name="food_price")
 	private int foodPrice;
