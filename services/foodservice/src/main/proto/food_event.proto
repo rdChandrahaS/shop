@@ -1,0 +1,12 @@
+syntax = "proto3";
+package foodservice;
+
+option java_package = "com.shop.foodservice.protobuf";
+option java_multiple_files = true;
+
+message FoodResponseProto {
+  int64 foodId = 1;
+  string foodName = 2;
+  string foodDescription = 3;
+  string foodPrice = 4;
+}

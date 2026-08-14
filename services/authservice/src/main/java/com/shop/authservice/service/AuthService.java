@@ -32,9 +32,7 @@ public class AuthService {
 		newUser.setEmail(request.getEmail());
 		newUser.setName(request.getName());
 		newUser.setPassword(passwordEncoder.encode(request.getPassword()));
-		newUser.setRoles(request.getRoles() != null && !request.getRoles().isEmpty() ?
-				request.getRoles() : Set.of("USER")
-		);
+		newUser.setRoles(Set.of("USER"));
 		
 		userRepository.save(newUser);
 		return ResponseEntity.ok("User registered successfully!");

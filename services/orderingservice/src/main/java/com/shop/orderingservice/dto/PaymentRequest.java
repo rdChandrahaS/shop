@@ -1,5 +1,7 @@
 package com.shop.orderingservice.dto;
 
+import java.math.BigDecimal;
+
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -10,6 +12,6 @@ import lombok.NoArgsConstructor;
 public class PaymentRequest {
 	private String orderId;
     private String customerId;
-    private double amount;
+    private BigDecimal amount;
     private String paymentMode;
 }

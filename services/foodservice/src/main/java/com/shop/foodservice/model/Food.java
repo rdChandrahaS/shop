@@ -1,5 +1,7 @@
 package com.shop.foodservice.model;
 
+import java.math.BigDecimal;
+
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
@@ -18,7 +20,7 @@ public class Food {
 	@Id
 	@GeneratedValue(strategy = GenerationType.IDENTITY)
 	@Column(name="food_id")
-	private Integer foodId;
+	private Long foodId;
 	
 	@Column(name="food_name")
 	private String foodName;
@@ -27,5 +29,5 @@ public class Food {
 	private String foodDescription;
 	
 	@Column(name="food_price")
-	private int foodPrice;
+	private BigDecimal foodPrice;
 }

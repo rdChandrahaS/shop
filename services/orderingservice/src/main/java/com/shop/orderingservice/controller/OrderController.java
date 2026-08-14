@@ -13,6 +13,7 @@ import com.shop.orderingservice.model.Order;
 import com.shop.orderingservice.model.enums.OrderStatus;
 import com.shop.orderingservice.service.OrderService;
 
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 
 @RestController
@@ -24,7 +25,7 @@ public class OrderController {
 
     @PreAuthorize("hasAnyRole('ADMIN', 'USER')")
     @PostMapping
-    public Order placeOrder(@RequestBody OrderEventDTO orderRequest, @AuthenticationPrincipal String tokenUserId) {
+    public Order placeOrder(@Valid @RequestBody OrderEventDTO orderRequest, @AuthenticationPrincipal String tokenUserId) {
         // Pass the DTO and the token ID down to the service layer
         return orderService.processAndPlaceOrder(orderRequest, tokenUserId);
     }

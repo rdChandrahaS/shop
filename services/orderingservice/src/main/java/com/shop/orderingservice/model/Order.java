@@ -10,6 +10,7 @@ import lombok.Setter;
 import com.shop.orderingservice.model.enums.OrderStatus;
 
 import java.util.List;
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 @Getter
@@ -23,7 +24,7 @@ public class Order {
 
     private LocalDateTime orderDate;
     private OrderStatus orderStatus;
-    private Double totalAmount;
+    private BigDecimal totalAmount;
     private Customer customer; 
     private List<OrderItem> orderDetails; 
 }

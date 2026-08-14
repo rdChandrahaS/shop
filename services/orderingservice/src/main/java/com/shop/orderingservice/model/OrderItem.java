@@ -1,5 +1,7 @@
 package com.shop.orderingservice.model;
 
+import java.math.BigDecimal;
+
 import jakarta.validation.constraints.Min;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -14,11 +16,11 @@ import lombok.Setter;
  */
 public class OrderItem {
     
-    private long foodId;
+    private Long foodId;
     private String name;
 
     @Min(value=1, message = "Quantity must be at least 1")
     private int quantity; 
    
-    private double pricePerUnit; 
+    private BigDecimal pricePerUnit; 
 }

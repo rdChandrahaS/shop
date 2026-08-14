@@ -25,7 +25,7 @@ import lombok.extern.slf4j.Slf4j;
 @RestController
 @RequestMapping("/payment")
 public class PaymentController {
-	private PaymentService paymentService;
+	private final PaymentService paymentService;
 	
 	@PostMapping("/process")
 	public PaymentStatus processPayment(
@@ -43,6 +43,7 @@ public class PaymentController {
 	}
 	
 	@PostMapping("/refund/request/{orderId}")
+	@PreAuthorize("hasAnyRole('ADMIN', 'USER')")
 	public ResponseEntity<String> requestRefund(
 			@PathVariable String OrderId,
 			@RequestBody String Reason) {

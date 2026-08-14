@@ -21,6 +21,6 @@ public interface InventoryRepository extends JpaRepository<Inventory, Long> {
 
 	@Lock(LockModeType.PESSIMISTIC_WRITE)
 	@Query("SELECT i FROM Inventory i WHERE i.foodId IN :foodIds")
-	List<Inventory> findAllByIdInForUpdate(@Param("foodIds") Set<Long> foodIds);
+	List<Inventory> findAllByIdInForUpdate(@Param("foodIds") Set<Long> set);
     
 }

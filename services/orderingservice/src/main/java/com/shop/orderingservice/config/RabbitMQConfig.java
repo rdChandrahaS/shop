@@ -86,9 +86,9 @@ public class RabbitMQConfig {
 	
 	@Bean
 	public Binding responseBinding() {
-		return BindingBuilder.bind(paymentResponseQueue())
-							.to(exchange())
-							.with(PAYMENT_RESPONSE_QUEUE);
+	    return BindingBuilder.bind(paymentResponseQueue())
+	            .to(exchange())
+	            .with(PAYMENT_RESULT_ROUTING_KEY); 
 	}
 	
 	@Bean

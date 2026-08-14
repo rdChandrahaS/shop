@@ -1,6 +1,7 @@
 package com.shop.paymentservice.consumer;
 
 import org.springframework.amqp.AmqpRejectAndDontRequeueException;
+import org.springframework.amqp.rabbit.annotation.RabbitListener;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -29,6 +30,7 @@ public class PaymentRequestListener {
     @Value("${payment.result.routing.key}")
     private String resultRoutingKey;
     
+    @RabbitListener(queues = "${payment.request.queue}")
     public void processPaymentRequest(byte[] requestBytes) {
     	try {
 			PaymentRequestProto requestProto = PaymentRequestProto.parseFrom(requestBytes);

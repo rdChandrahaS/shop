@@ -1,5 +1,6 @@
 package com.shop.orderingservice.service;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.stream.Collectors;
 import java.util.List;
@@ -14,7 +15,9 @@ import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.shop.orderingservice.client.FoodClient;
 import com.shop.orderingservice.config.PaginationConfig;
+import com.shop.orderingservice.dto.FoodResponse;
 import com.shop.orderingservice.dto.OrderEventDTO;
 import com.shop.orderingservice.exception.InsufficientInventoryException;
 import com.shop.orderingservice.exception.OrderNotFoundException;
@@ -37,6 +40,7 @@ public class OrderService {
     private final InventoryRepository inventoryRepository;
     private final RabbitTemplate rabbitTemplate;
     private final PaginationConfig paginationConfig;
+    private final FoodClient foodClient;
     
     @Value("${rabbitmq.exchange.name}")
     private String exchangeName;
@@ -54,12 +58,12 @@ public class OrderService {
     @Transactional
     public Order processAndPlaceOrder(OrderEventDTO orderRequest, String tokenUserId) {
         
-        // 1. MAP DTO TO ENTITY
+    	// 1. MAP DTO TO ENTITY
         Order newOrder = new Order();
-        newOrder.setTotalAmount(orderRequest.getTotalAmount());
         
         Customer customer = new Customer();
         customer.setCustomerId(tokenUserId); // Set ID from JWT
+        
         if (orderRequest.getCustomer() != null) {
             customer.setName(orderRequest.getCustomer().getName());
             customer.setEmail(orderRequest.getCustomer().getEmail());
@@ -67,19 +71,31 @@ public class OrderService {
         }
         newOrder.setCustomer(customer);
         
+		BigDecimal calculatedTotal = BigDecimal.ZERO;
+        
         if (orderRequest.getItems() != null) {
-            List<OrderItem> items = orderRequest.getItems().stream().map(dto -> {
+            List<OrderItem> items = orderRequest.getItems()
+            									.stream()
+            									.map(dto -> {
+                FoodResponse realFood = foodClient.getFood(dto.getFoodId());
                 OrderItem item = new OrderItem();
-                item.setName(dto.getName());
+                item.setName(realFood.getFoodName());
                 item.setQuantity(dto.getQuantity());
-                item.setPricePerUnit(dto.getPricePerUnit());
-                // Note: If 'foodId' is added back to OrderItemDTO, map it here:
-                // item.setFoodId(dto.getFoodId());
+                item.setPricePerUnit(realFood.getFoodPrice());
+                item.setFoodId(dto.getFoodId());
                 return item;
             }).collect(Collectors.toList());
+            
+            // Secure BigDecimal math: Price * Quantity, then sum it all up
+            calculatedTotal = items.stream()
+                    .map(item -> item.getPricePerUnit().multiply(BigDecimal.valueOf(item.getQuantity())))
+                    .reduce(BigDecimal.ZERO, BigDecimal::add);
+                    
             newOrder.setOrderDetails(items);
         }
-
+        
+        newOrder.setTotalAmount(calculatedTotal);
+        
         // 2. DEDUCT INVENTORY (Fast Transaction)
         deductInventory(newOrder);
 
@@ -94,27 +110,24 @@ public class OrderService {
             revertInventory(newOrder); // Roll-back PostgresDB if MongoDB fails
             throw new RuntimeException("Failed to save order to database", e);
         }
-
-/*
-        // 4. Asynchronously send Payment Request via RabbitMQ
-        PaymentRequest paymentRequest = new PaymentRequest(
-            savedOrder.getOrderId(),
-            tokenUserId,
-            savedOrder.getTotalAmount(),
-            orderRequest.getMode()
-        );
-*/
         
         // 4. Asynchronously send Payment Request via Protobuf Binary
         PaymentRequestProto paymentRequestProto = PaymentRequestProto.newBuilder()
             .setOrderId(savedOrder.getOrderId())
             .setCustomerId(tokenUserId)
-            .setAmount(savedOrder.getTotalAmount())
+            // Convert BigDecimal to String to prevent precision loss over the wire
+            .setAmount(savedOrder.getTotalAmount().toString()) 
             .setPaymentMode(orderRequest.getMode())
             .build();
 
-        // Send raw bytes through RabbitMQ using the routing key
-        rabbitTemplate.convertAndSend(exchangeName, requestRoutingKey, paymentRequestProto.toByteArray());
+        try {
+            // Send raw bytes through RabbitMQ using the routing key
+            rabbitTemplate.convertAndSend(exchangeName, requestRoutingKey, paymentRequestProto.toByteArray());
+        } catch(Exception e) {
+            revertInventory(newOrder); 
+            orderRepository.delete(savedOrder); 
+            throw new RuntimeException("Message broker unreachable. Order cancelled to prevent data corruption.", e);
+        }
 
         return savedOrder;
     }
@@ -124,7 +137,8 @@ public class OrderService {
         	throw new IllegalArgumentException("Order details cannot be empty!");
         }
         
-        Map<Long, Integer> itemQuantities = order.getOrderDetails().stream()
+        Map<Long, Integer> itemQuantities = order.getOrderDetails()
+        		.stream()
                 .collect(Collectors.groupingBy(OrderItem::getFoodId, Collectors.summingInt(OrderItem::getQuantity)));
 
         List<Inventory> stocks = inventoryRepository.findAllByIdInForUpdate(itemQuantities.keySet());
@@ -135,6 +149,9 @@ public class OrderService {
 
         for (Inventory stock : stocks) {
             int required = itemQuantities.get(stock.getFoodId());
+            if (required <= 0) {
+                throw new IllegalArgumentException("Quantity must be greater than zero");
+            }
             if (stock.getAvailableAmount() < required) {
                 throw new InsufficientInventoryException("Out of stock: " + stock.getFoodName());
             }

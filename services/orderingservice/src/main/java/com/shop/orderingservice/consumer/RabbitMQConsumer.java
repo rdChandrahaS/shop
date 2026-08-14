@@ -1,5 +1,6 @@
 package com.shop.orderingservice.consumer;
 
+import org.springframework.amqp.AmqpRejectAndDontRequeueException;
 import org.springframework.amqp.rabbit.annotation.RabbitListener;
 import org.springframework.stereotype.Service;
 
@@ -42,6 +43,7 @@ public class RabbitMQConsumer {
 			}
 		} catch (Exception e) {
 			log.error("Failed to parse PaymentResponseProto bytes", e);
+			throw new AmqpRejectAndDontRequeueException("Failed to process payment result", e);
 		}
 	}
 }
