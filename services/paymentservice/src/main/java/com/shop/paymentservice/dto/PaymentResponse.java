@@ -1,5 +1,7 @@
 package com.shop.paymentservice.dto;
 
+import java.math.BigDecimal;
+
 import com.shop.paymentservice.model.enums.PaymentStatus;
 
 import lombok.AllArgsConstructor;
@@ -10,5 +12,5 @@ import lombok.Data;
 public class PaymentResponse {
 	private PaymentStatus status;
     private String transactionId;
-    private double amountProcessed;
+    private BigDecimal amountProcessed;
 }

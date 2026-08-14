@@ -1,5 +1,7 @@
 package com.shop.paymentservice.consumer;
 
+import java.math.BigDecimal;
+
 import org.springframework.amqp.AmqpRejectAndDontRequeueException;
 import org.springframework.amqp.rabbit.annotation.RabbitListener;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
@@ -38,7 +40,7 @@ public class PaymentRequestListener {
 
             PaymentRequest request = new PaymentRequest();
             request.setId(requestProto.getOrderId());
-            request.setAmount(requestProto.getAmount());
+            request.setAmount(new BigDecimal(requestProto.getAmount()));
             request.setMode(PaymentMode.valueOf(requestProto.getPaymentMode()));
 
             boolean isSuccess = false;

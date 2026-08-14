@@ -31,6 +31,8 @@ public class GatewayAuthenticationFilter extends OncePerRequestFilter {
             List<SimpleGrantedAuthority> authorities = Collections.emptyList();
             if (roleStr != null && !roleStr.isEmpty()) {
                 authorities = Arrays.stream(roleStr.split(","))
+                        .map(String::trim)
+                        .filter(role -> !role.isEmpty())
                         .map(SimpleGrantedAuthority::new)
                         .collect(Collectors.toList());
             }

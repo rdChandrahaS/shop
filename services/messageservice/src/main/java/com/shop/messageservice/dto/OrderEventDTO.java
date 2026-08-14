@@ -1,5 +1,6 @@
 package com.shop.messageservice.dto;
 
+import java.math.BigDecimal;
 import java.util.List;
 
 import com.shop.messageservice.dto.enums.OrderStatus;
@@ -16,7 +17,7 @@ public class OrderEventDTO {
 	private String orderId;
 	private OrderStatus status;	
 	private String message;
-	private double totalAmount;    
+	private BigDecimal totalAmount;    
     private CustomerDTO customer;
     private List<OrderItemDTO> items;
 }

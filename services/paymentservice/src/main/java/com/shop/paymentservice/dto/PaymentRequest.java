@@ -1,5 +1,7 @@
 package com.shop.paymentservice.dto;
 
+import java.math.BigDecimal;
+
 import com.shop.paymentservice.model.enums.PaymentMode;
 
 import lombok.Data;
@@ -8,5 +10,5 @@ import lombok.Data;
 public class PaymentRequest {
 	private String id;
 	private PaymentMode mode;
-	private double amount;
+	private BigDecimal amount;
 }

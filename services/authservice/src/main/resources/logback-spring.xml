@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+
+    <!-- Define the log folder and file name -->
+    <property name="LOGS_DIR" value="./logs" />
+    <property name="LOG_FILE" value="authservice" />
+
+    <!-- 1. Console Appender (Prints to the terminal with colors) -->
+    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n</pattern>
+        </encoder>
+    </appender>
+
+    <!-- 2. Rolling File Appender (Saves to file and rotates) -->
+    <appender name="FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <!-- The active log file being written to right now -->
+        <file>${LOGS_DIR}/${LOG_FILE}.log</file>
+
+        <encoder>
+            <pattern>%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n</pattern>
+        </encoder>
+
+        <!-- The Rotation Policy -->
+        <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
+            <!-- Name of the archived files (e.g., messageservice-2026-08-15.0.log.gz) -->
+            <!-- Note: The .gz extension automatically compresses old logs to save space! -->
+            <fileNamePattern>${LOGS_DIR}/archived/${LOG_FILE}-%d{yyyy-MM-dd}.%i.log.gz</fileNamePattern>
+            
+            <!-- Create a new file if the current one hits 10MB -->
+            <maxFileSize>10MB</maxFileSize>
+            
+            <!-- Keep 30 days worth of history -->
+            <maxHistory>30</maxHistory>
+            
+            <!-- Delete oldest logs if the total archive size exceeds 1GB -->
+            <totalSizeCap>1GB</totalSizeCap>
+        </rollingPolicy>
+    </appender>
+
+    <!-- Apply these rules to the whole application -->
+    <root level="INFO">
+        <appender-ref ref="CONSOLE" />
+        <appender-ref ref="FILE" />
+    </root>
+
+</configuration>

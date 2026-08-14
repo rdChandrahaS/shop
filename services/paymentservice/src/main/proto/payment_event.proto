@@ -10,7 +10,7 @@ option java_multiple_files = true;
 message PaymentRequestProto {
   string order_id = 1;
   string customer_id = 2;
-  double amount = 3;
+  string amount = 3;
   string payment_mode = 4;
 }
 

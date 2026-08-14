@@ -34,7 +34,7 @@ public class SecurityConfig {
             .csrf(csrf -> csrf.disable()) // Explicitly disable CSRF to allow POST requests
             .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(auth -> auth
-                .requestMatchers("/test-auth").permitAll() // Let's keep our debug endpoint open just in case
+                .requestMatchers("/order/test-auth").permitAll()
                 .anyRequest().authenticated()
             )
             .addFilterBefore(gatewayAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);

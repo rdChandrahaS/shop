@@ -1,6 +1,7 @@
 package com.shop.foodservice.publisher;
 
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import lombok.RequiredArgsConstructor;
@@ -13,7 +14,10 @@ public class FoodEventPublisher {
 	
 	private final RabbitTemplate rabbitTemplate;
 	
+	@Value("${rabbitmq.exchange.name}")
 	private String exchange;
+	
+	@Value("${rabbitmq.routing.key}")
     private String routingKey;
     
     public void broadcastFoodUpdate(byte[] protobufData) {

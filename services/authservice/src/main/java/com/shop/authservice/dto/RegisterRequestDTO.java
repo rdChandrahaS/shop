@@ -2,9 +2,9 @@ package com.shop.authservice.dto;
 
 import java.util.Set;
 
-import lombok.Getter;
+import lombok.Data;
 
-@Getter
+@Data
 public class RegisterRequestDTO {
 	private String username;
 	private String email;

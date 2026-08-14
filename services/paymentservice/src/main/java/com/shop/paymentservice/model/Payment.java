@@ -1,5 +1,7 @@
 package com.shop.paymentservice.model;
 
+import java.math.BigDecimal;
+
 import com.shop.paymentservice.model.enums.PaymentMode;
 import com.shop.paymentservice.model.enums.PaymentStatus;
 
@@ -23,7 +25,7 @@ public class Payment {
 	private String orderId;
 	
 	@Column(name="order_amount")
-	private double amount;
+	private BigDecimal amount;
 	
 	@Enumerated(EnumType.STRING)
 	@Column(name="order_status")

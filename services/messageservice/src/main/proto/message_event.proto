@@ -1,0 +1,26 @@
+syntax = "proto3";
+package messageservice;
+
+option java_package = "com.shop.messageservice.protobuf";
+option java_multiple_files = true;
+
+message OrderItemProto {
+  string name = 1;
+  int32 quantity = 2;
+  string price_per_unit = 3;
+}
+
+message CustomerProto {
+  string name = 1;
+  string email = 2;
+  string phone_no = 3;
+}
+
+message OrderEventProto {
+  string order_id = 1;
+  string status = 2;
+  string message = 3;
+  string total_amount = 4;
+  CustomerProto customer = 5;
+  repeated OrderItemProto items = 6;
+}

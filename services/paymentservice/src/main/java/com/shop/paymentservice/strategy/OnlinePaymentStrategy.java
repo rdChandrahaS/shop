@@ -1,5 +1,7 @@
 package com.shop.paymentservice.strategy;
 
+import java.math.BigDecimal;
+
 import org.json.JSONObject;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
@@ -28,7 +30,7 @@ public class OnlinePaymentStrategy implements PaymentStrategy {
     	try {
     		RazorpayClient razorpay = new RazorpayClient(apiKey, apiSecret);
     		
-    		int amountInPaisa = (int)(request.getAmount() * 100);
+    		int amountInPaisa = request.getAmount().multiply(new BigDecimal("100")).intValue();
     		
     		JSONObject orderObject = new JSONObject();
     		orderObject.put("amount", amountInPaisa);   
@@ -46,11 +48,11 @@ public class OnlinePaymentStrategy implements PaymentStrategy {
     }
     
     @Override
-    public boolean processRefund(String transactionId, double refundAmount) {
+    public boolean processRefund(String transactionId, BigDecimal refundAmount) {
         try {
             RazorpayClient razorpay = new RazorpayClient(apiKey, apiSecret);
             
-            int amountInPaisa = (int) (refundAmount * 100);
+            int amountInPaisa = refundAmount.multiply(new BigDecimal("100")).intValue();
 
             JSONObject refundRequest = new JSONObject();
             refundRequest.put("amount", amountInPaisa);

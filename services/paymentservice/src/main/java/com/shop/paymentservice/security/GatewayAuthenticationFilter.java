@@ -1,8 +1,10 @@
 package com.shop.paymentservice.security;
 
 import java.io.IOException;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import java.util.stream.Collectors;
 
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
@@ -31,7 +33,11 @@ public class GatewayAuthenticationFilter extends OncePerRequestFilter{
 			List<SimpleGrantedAuthority> authorities = Collections.emptyList();
 			
 		    if (role != null && !role.isEmpty()) {
-		        authorities = Collections.singletonList(new SimpleGrantedAuthority(role));
+		        authorities = Arrays.stream(role.split(","))
+		        					.map(String::trim)
+		        					.filter(r -> !r.isEmpty())
+		        					.map(SimpleGrantedAuthority::new)
+		        					.collect(Collectors.toList());
 		    }
 		    
 			UsernamePasswordAuthenticationToken token = new UsernamePasswordAuthenticationToken(userId, null, authorities);

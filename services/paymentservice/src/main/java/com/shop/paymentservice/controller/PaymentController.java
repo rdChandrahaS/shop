@@ -45,9 +45,9 @@ public class PaymentController {
 	@PostMapping("/refund/request/{orderId}")
 	@PreAuthorize("hasAnyRole('ADMIN', 'USER')")
 	public ResponseEntity<String> requestRefund(
-			@PathVariable String OrderId,
+			@PathVariable("orderId") String orderId,
 			@RequestBody String Reason) {
-		return paymentService.requestRefund(OrderId, Reason);
+		return paymentService.requestRefund(orderId, Reason);
 	}
 	
 	@GetMapping("/refund/pending")

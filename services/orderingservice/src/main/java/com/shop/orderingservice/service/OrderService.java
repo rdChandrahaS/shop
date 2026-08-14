@@ -42,10 +42,10 @@ public class OrderService {
     private final PaginationConfig paginationConfig;
     private final FoodClient foodClient;
     
-    @Value("${rabbitmq.exchange.name}")
+    @Value("${payment.exchange.key}")
     private String exchangeName;
     
-    @Value("${rabbitmq.routing.key}")
+    @Value("${payment.request.routing.key}")
     private String requestRoutingKey;
 
     public Order findById(String orderId) {
@@ -160,7 +160,12 @@ public class OrderService {
         inventoryRepository.saveAll(stocks);
     }
 
+    @Transactional
     public void revertInventory(Order order) {
+        if (order.getOrderDetails() == null || order.getOrderDetails().isEmpty()) {
+            return;
+        }
+
         Map<Long, Integer> itemQuantities = order.getOrderDetails().stream()
                 .collect(Collectors.groupingBy(OrderItem::getFoodId, Collectors.summingInt(OrderItem::getQuantity)));
 
@@ -172,6 +177,24 @@ public class OrderService {
             stock.setAvailableAmount(stock.getAvailableAmount() + toAddBack);
         }
         inventoryRepository.saveAll(stocks);
+    }
+
+    @Transactional
+    public void handlePaymentResult(String orderId, boolean success) {
+        Order order = orderRepository.findById(orderId)
+                .orElseThrow(() -> new OrderNotFoundException("Order not found: " + orderId));
+
+        if (order.getOrderStatus() != OrderStatus.PENDING) {
+            return;
+        }
+
+        if (success) {
+            order.setOrderStatus(OrderStatus.CONFIRMED);
+        } else {
+            revertInventory(order);
+            order.setOrderStatus(OrderStatus.CANCELLED);
+        }
+        orderRepository.save(order);
     }
 
     public Order updateStatus(String orderId, OrderStatus newStatus) {

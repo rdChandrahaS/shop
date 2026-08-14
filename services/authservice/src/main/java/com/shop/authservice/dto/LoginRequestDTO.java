@@ -1,8 +1,8 @@
 package com.shop.authservice.dto;
 
-import lombok.Getter;
+import lombok.Data;
 
-@Getter
+@Data
 public class LoginRequestDTO {
 	private String username;
 	private String password;
