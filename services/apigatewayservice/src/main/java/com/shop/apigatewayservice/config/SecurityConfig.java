@@ -1,6 +1,7 @@
 package com.shop.apigatewayservice.config;
 
 import javax.crypto.spec.SecretKeySpec;
+import java.nio.charset.StandardCharsets;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
@@ -38,7 +39,7 @@ public class SecurityConfig {
 	
 	@Bean
 	public ReactiveJwtDecoder jwtDecoder() {
-		byte[] keyBytes = jwtSecret.getBytes();
+		byte[] keyBytes = jwtSecret.getBytes(StandardCharsets.UTF_8);
 		SecretKeySpec secretKey = new SecretKeySpec(keyBytes, 0, keyBytes.length, "HmacSHA256");
 		return NimbusReactiveJwtDecoder.withSecretKey(secretKey).build();
 	}

@@ -69,7 +69,7 @@ services:
     ports:
       - "8081:8081"
     environment:
-      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/shop_db
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://shop-postgres:5432/shop_db
       - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://serviceregistry:8761/eureka/
       - EUREKA_INSTANCE_PREFER_IP_ADDRESS=true
     depends_on:
@@ -82,9 +82,9 @@ services:
     ports:
       - "8082:8082"
     environment:
-      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/shop_db
-      - SPRING_DATA_REDIS_HOST=redis
-      - SPRING_RABBITMQ_HOST=rabbitmq
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://shop-postgres:5432/shop_db
+      - SPRING_DATA_REDIS_HOST=shop-redis
+      - SPRING_RABBITMQ_HOST=shop-rabbitmq
       - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://serviceregistry:8761/eureka/
       - EUREKA_INSTANCE_PREFER_IP_ADDRESS=true
     depends_on:
@@ -99,7 +99,7 @@ services:
     ports:
       - "8083:8083"
     environment:
-      - SPRING_RABBITMQ_HOST=rabbitmq
+      - SPRING_RABBITMQ_HOST=shop-rabbitmq
       - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://serviceregistry:8761/eureka/
       - EUREKA_INSTANCE_PREFER_IP_ADDRESS=true
     depends_on:
@@ -112,9 +112,9 @@ services:
     ports:
       - "8084:8084"
     environment:
-      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/shop_db
-      - SPRING_MONGODB_URI=mongodb://mongodb:27017/shop-order
-      - SPRING_RABBITMQ_HOST=rabbitmq
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://shop-postgres:5432/shop_db
+      - SPRING_DATA_MONGODB_URI=mongodb://shop-mongodb:27017/shop-order
+      - SPRING_RABBITMQ_HOST=shop-rabbitmq
       - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://serviceregistry:8761/eureka/
       - EUREKA_INSTANCE_PREFER_IP_ADDRESS=true
     depends_on:
@@ -129,8 +129,8 @@ services:
     ports:
       - "8089:8089"
     environment:
-      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/shop_db
-      - SPRING_DATA_REDIS_HOST=redis
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://shop-postgres:5432/shop_db
+      - SPRING_DATA_REDIS_HOST=shop-redis
       - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://serviceregistry:8761/eureka/
       - EUREKA_INSTANCE_PREFER_IP_ADDRESS=true
     depends_on:
