@@ -7,7 +7,6 @@ import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
-import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 
@@ -42,27 +41,27 @@ public class SecurityConfig {
         return http.build();
     }
 
-    @Bean
-    public JwtAuthenticationConverter jwtAuthConverter() {
-        JwtAuthenticationConverter converter = new JwtAuthenticationConverter();
+    // @Bean
+    // public JwtAuthenticationConverter jwtAuthConverter() {
+    //     JwtAuthenticationConverter converter = new JwtAuthenticationConverter();
         
-        converter.setJwtGrantedAuthoritiesConverter(jwt -> {
-            // Safely fetch the realm_access object
-            Map<String, Object> realmAccess = jwt.getClaimAsMap("realm_access");
+    //     converter.setJwtGrantedAuthoritiesConverter(jwt -> {
+    //         // Safely fetch the realm_access object
+    //         Map<String, Object> realmAccess = jwt.getClaimAsMap("realm_access");
             
-            if (realmAccess == null || !realmAccess.containsKey("roles")) {
-                return Collections.emptyList();
-            }
+    //         if (realmAccess == null || !realmAccess.containsKey("roles")) {
+    //             return Collections.emptyList();
+    //         }
             
-            @SuppressWarnings("unchecked")
-            List<String> roles = (List<String>) realmAccess.get("roles");
+    //         @SuppressWarnings("unchecked")
+    //         List<String> roles = (List<String>) realmAccess.get("roles");
             
-            // Map the Keycloak roles to Spring Security roles with "ROLE_" prefix
-            return roles.stream()
-                    .map(role -> new SimpleGrantedAuthority("ROLE_" + role.toUpperCase()))
-                    .collect(Collectors.toList());
-        });
+    //         // Map the Keycloak roles to Spring Security roles with "ROLE_" prefix
+    //         return roles.stream()
+    //                 .map(role -> new SimpleGrantedAuthority("ROLE_" + role.toUpperCase()))
+    //                 .collect(Collectors.toList());
+    //     });
         
-        return converter;
-    }
+    //     return converter;
+    // }
 }

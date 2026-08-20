@@ -8,6 +8,6 @@ import com.shop.orderingservice.dto.PaymentResponse;
 
 @FeignClient(name="paymentservice")
 public interface PaymentClient {
-    @PostMapping("/api/payment/process")
+    @PostMapping("/payment/process")
     PaymentResponse processPayment(@RequestParam("customerId") String customerId, @RequestParam("amount") double amount);
 }

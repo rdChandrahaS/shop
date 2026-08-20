@@ -125,7 +125,7 @@ public class FoodService {
 			foodEventPublisher.broadcastFoodUpdate(proto.toByteArray());
 	        
 			log.info("Updated existing food into database: {}", response);
-			return ResponseEntity.status(HttpStatus.CREATED).body(response);
+			return ResponseEntity.status(HttpStatus.OK).body(response);
 		} catch (ResourceNotFoundException e) {
             throw e;
         }catch (Exception e) {
@@ -164,19 +164,15 @@ public class FoodService {
 	
 	@Cacheable(value = "food", key = "#id")
 	public FoodResponse getFood(Long id) {
-		try {
-			log.info("Service : Get food by id : {}", id);
-			Food food = foodRepository.findById(id).orElseThrow(() -> new ResourceNotFoundException("Food not found with ID: " + id));
-			log.info("Successfully retrived food from the database with ID: {}", id);
-			return new FoodResponse(
-					food.getFoodId(),
-					food.getFoodName(),
-					food.getFoodDescription(),
-					food.getFoodPrice()
-			);
-		}catch(ResourceNotFoundException e) {
-			throw e;
-		}
+		log.info("Service : Get food by id : {}", id);
+		Food food = foodRepository.findById(id).orElseThrow(() -> new ResourceNotFoundException("Food not found with ID: " + id));
+		log.info("Successfully retrived food from the database with ID: {}", id);
+		return new FoodResponse(
+				food.getFoodId(),
+				food.getFoodName(),
+				food.getFoodDescription(),
+				food.getFoodPrice()
+		);
 	}
 	
 	@Cacheable(value = "food_proto", key = "#id")

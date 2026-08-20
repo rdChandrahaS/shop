@@ -66,8 +66,6 @@ services:
   authservice:
     build: ./authservice
     container_name: authservice
-    ports:
-      - "8081:8081"
     environment:
       - SPRING_DATASOURCE_URL=jdbc:postgresql://shop-postgres:5432/shop_db
       - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://serviceregistry:8761/eureka/
@@ -79,8 +77,6 @@ services:
   paymentservice:
     build: ./paymentservice
     container_name: paymentservice
-    ports:
-      - "8082:8082"
     environment:
       - SPRING_DATASOURCE_URL=jdbc:postgresql://shop-postgres:5432/shop_db
       - SPRING_DATA_REDIS_HOST=shop-redis
@@ -96,8 +92,6 @@ services:
   messageservice:
     build: ./messageservice
     container_name: messageservice
-    ports:
-      - "8083:8083"
     environment:
       - SPRING_RABBITMQ_HOST=shop-rabbitmq
       - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://serviceregistry:8761/eureka/
@@ -109,8 +103,6 @@ services:
   orderingservice:
     build: ./orderingservice
     container_name: orderingservice
-    ports:
-      - "8084:8084"
     environment:
       - SPRING_DATASOURCE_URL=jdbc:postgresql://shop-postgres:5432/shop_db
       - SPRING_DATA_MONGODB_URI=mongodb://shop-mongodb:27017/shop-order
@@ -126,8 +118,6 @@ services:
   foodservice:
     build: ./foodservice
     container_name: foodservice
-    ports:
-      - "8089:8089"
     environment:
       - SPRING_DATASOURCE_URL=jdbc:postgresql://shop-postgres:5432/shop_db
       - SPRING_DATA_REDIS_HOST=shop-redis

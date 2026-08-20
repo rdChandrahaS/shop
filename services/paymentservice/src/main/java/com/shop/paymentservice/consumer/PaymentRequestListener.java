@@ -8,7 +8,10 @@ import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
+import com.google.protobuf.InvalidProtocolBufferException;
 import com.shop.paymentservice.dto.PaymentRequest;
+import com.shop.paymentservice.dto.PaymentResponse;
+import com.shop.paymentservice.exception.DuplicatePaymentException;
 import com.shop.paymentservice.model.enums.PaymentMode;
 import com.shop.paymentservice.model.enums.PaymentStatus;
 import com.shop.paymentservice.protobuf.PaymentRequestProto;
@@ -43,27 +46,19 @@ public class PaymentRequestListener {
             request.setAmount(new BigDecimal(requestProto.getAmount()));
             request.setMode(PaymentMode.valueOf(requestProto.getPaymentMode()));
 
-            boolean isSuccess = false;
-            String transactionId = "txn_processing";
-            String message;
+            PaymentResponse paymentResult = paymentService.processPayment(request);
             
-            try {
-                PaymentStatus status = paymentService.processPayment(request);
-                isSuccess = (status == PaymentStatus.SUCCESS || status == PaymentStatus.PENDING);
-                message = "Payment processed with status: " + status;
-            } catch (IllegalArgumentException | IllegalStateException e) {
-                // Business exception (e.g., Lua script blocked duplicate lock). 
-                // Do not retry, just return a failure response.
-                log.warn("Payment rejected for Order ID: {}", requestProto.getOrderId(), e);
-                message = e.getMessage();
-            } catch (Exception e) {
-                // Transient infrastructure exception (DB down). Throw to trigger RabbitMQ retries.
-                log.error("Transient error processing payment. Spring will retry...", e);
-                throw new RuntimeException("Transient payment error", e);
+            if (paymentResult.getStatus() == PaymentStatus.PENDING && request.getMode() == PaymentMode.ONLINE) {
+                log.info("Online Payment is PENDING for Order {}. Waiting for Gateway Webhook...", request.getId());
+                return; 
             }
+            
+            boolean isSuccess = (paymentResult.getStatus() == PaymentStatus.SUCCESS || paymentResult.getStatus() == PaymentStatus.PENDING);
+            String message = "Payment processed with status: " + paymentResult.getStatus();
+            
             PaymentResponseProto responseProto = PaymentResponseProto.newBuilder()
                     .setOrderId(requestProto.getOrderId())
-                    .setTransactionId(transactionId)
+                    .setTransactionId(paymentResult.getTransactionId() != null ? paymentResult.getTransactionId() : "N/A")
                     .setSuccess(isSuccess)
                     .setMessage(message != null ? message : "Processed")
                     .build();
@@ -71,9 +66,14 @@ public class PaymentRequestListener {
             rabbitTemplate.convertAndSend(exchangeName, resultRoutingKey, responseProto.toByteArray());
             log.info("Sent payment result back for Order ID: {}", requestProto.getOrderId());
 
-        } catch (com.google.protobuf.InvalidProtocolBufferException e) {
+        } catch (DuplicatePaymentException e) {
+        	log.warn("Duplicate payment attempt detected. Discarding message.", e);
+        } catch (InvalidProtocolBufferException e) {
             log.error("Fatal error: Failed to parse PaymentRequestProto. Sending straight to DLQ.", e);
             throw new AmqpRejectAndDontRequeueException("Invalid Protobuf payload", e);
+        } catch (Exception e) {
+            log.error("Transient error processing payment. Spring will retry...", e);
+            throw new RuntimeException("Transient payment error", e);
         }
     }
     

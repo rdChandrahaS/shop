@@ -13,8 +13,8 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.shop.paymentservice.dto.PaymentRequest;
+import com.shop.paymentservice.dto.PaymentResponse;
 import com.shop.paymentservice.model.Payment;
-import com.shop.paymentservice.model.enums.PaymentStatus;
 import com.shop.paymentservice.service.PaymentService;
 
 import lombok.RequiredArgsConstructor;
@@ -28,7 +28,7 @@ public class PaymentController {
 	private final PaymentService paymentService;
 	
 	@PostMapping("/process")
-	public PaymentStatus processPayment(
+	public PaymentResponse processPayment(
 			@RequestBody PaymentRequest request,
 			@RequestHeader("X-User-Id") String userId) {
 		log.info("Processing payment for user: {}", userId);
@@ -43,11 +43,9 @@ public class PaymentController {
 	}
 	
 	@PostMapping("/refund/request/{orderId}")
-	@PreAuthorize("hasAnyRole('ADMIN', 'USER')")
-	public ResponseEntity<String> requestRefund(
-			@PathVariable("orderId") String orderId,
-			@RequestBody String Reason) {
-		return paymentService.requestRefund(orderId, Reason);
+	@PreAuthorize("hasAnyRole('ADMIN')")
+	public ResponseEntity<String> requestRefund(@PathVariable("orderId") String orderId) {
+		return paymentService.requestRefund(orderId);
 	}
 	
 	@GetMapping("/refund/pending")

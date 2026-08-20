@@ -4,6 +4,7 @@ import java.util.List;
 import java.util.Map;
 
 import org.json.JSONObject;
+import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
@@ -16,8 +17,8 @@ import com.shop.paymentservice.dto.PaymentResponse;
 import com.shop.paymentservice.exception.DuplicatePaymentException;
 import com.shop.paymentservice.exception.PaymentNotFoundException;
 import com.shop.paymentservice.model.Payment;
-import com.shop.paymentservice.model.enums.PaymentMode;
 import com.shop.paymentservice.model.enums.PaymentStatus;
+import com.shop.paymentservice.protobuf.PaymentResponseProto;
 import com.shop.paymentservice.repo.PaymentRepository;
 import com.shop.paymentservice.strategy.PaymentStrategy;
 
@@ -28,15 +29,17 @@ import lombok.extern.slf4j.Slf4j;
 @Service
 @RequiredArgsConstructor
 public class PaymentService {
-	private final Map<PaymentMode, PaymentStrategy> paymentStrategies;
+	
+	private final Map<String, PaymentStrategy> paymentStrategies;
 	private final PaymentRepository paymentRepo;
 	private final StringRedisTemplate redisTemplate;
     private final DefaultRedisScript<Boolean> paymentLockScript;
+    private final RabbitTemplate rabbitTemplate;
 	
 	@Value("${razorpay.webhook.secret}")
     private String webhookSecret;
 	
-	public PaymentStatus processPayment(PaymentRequest request) {
+	public PaymentResponse processPayment(PaymentRequest request) {
 		
 		//Checking if this payment is already processing
 		String lockKey = "payment:lock:" + request.getId();
@@ -75,7 +78,7 @@ public class PaymentService {
 			
 			log.info("Payment Done by id : {}",request.getId());
 			
-			return response.getStatus();
+			return response;
 		}catch(Exception e) {
 			log.warn("Could not connect to Razorpay");
 			redisTemplate.delete(lockKey);
@@ -100,13 +103,25 @@ public class PaymentService {
             										  .getJSONObject("entity");
             	
             	String razorPayOrderID = paymentEntity.getString("order_id");
+                String razorPayPaymentID = paymentEntity.getString("id");
             	
             	Payment payment = paymentRepo.findByTransactionId(razorPayOrderID)
             	        .orElseThrow(() -> new PaymentNotFoundException("Payment Not Found"));
             	
             	payment.setStatus(PaymentStatus.SUCCESS);
+            	payment.setTransactionId(razorPayPaymentID);
+            	
             	paymentRepo.save(payment);
             	
+            	PaymentResponseProto responseProto = PaymentResponseProto.newBuilder()
+                        .setOrderId(payment.getOrderId())
+                        .setTransactionId(payment.getTransactionId())
+                        .setSuccess(true)
+                        .setMessage("Webhook confirmed payment")
+                        .build();
+                        
+                rabbitTemplate.convertAndSend("shop_exchange", "payment.result.key", responseProto.toByteArray());
+                    
             	log.info("Payment Success Confirmed for Order: {}", payment.getOrderId());
             }
 		}catch (Exception e) {
@@ -114,7 +129,7 @@ public class PaymentService {
 		}
 	}
 	
-	public ResponseEntity<String> requestRefund(String orderId,String reason){
+	public ResponseEntity<String> requestRefund(String orderId){
 		Payment payment = paymentRepo.findById(orderId)
 		        .orElseThrow(() -> new PaymentNotFoundException("Invalid OrderID!"));
 		
