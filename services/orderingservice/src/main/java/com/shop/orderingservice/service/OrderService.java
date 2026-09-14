@@ -15,12 +15,11 @@ import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import com.shop.orderingservice.client.FoodClient;
 import com.shop.orderingservice.config.PaginationConfig;
-import com.shop.orderingservice.dto.FoodResponse;
 import com.shop.orderingservice.dto.OrderEventDTO;
 import com.shop.orderingservice.exception.InsufficientInventoryException;
 import com.shop.orderingservice.exception.OrderNotFoundException;
+import com.shop.orderingservice.exception.ResourceNotFoundException;
 import com.shop.orderingservice.model.Customer;
 import com.shop.orderingservice.model.Inventory;
 import com.shop.orderingservice.model.Order;
@@ -31,7 +30,9 @@ import com.shop.orderingservice.repo.InventoryRepository;
 import com.shop.orderingservice.repo.OrderRepository;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class OrderService {
@@ -40,13 +41,15 @@ public class OrderService {
     private final InventoryRepository inventoryRepository;
     private final RabbitTemplate rabbitTemplate;
     private final PaginationConfig paginationConfig;
-    private final FoodClient foodClient;
     
     @Value("${payment.exchange.key}")
     private String exchangeName;
     
     @Value("${payment.request.routing.key}")
     private String requestRoutingKey;
+    
+    @Value("${rabbitmq.routing.key}")
+    private String notificationRoutingKey;
 
     public Order findById(String orderId) {
         return orderRepository.findById(orderId)
@@ -73,20 +76,20 @@ public class OrderService {
         
 		BigDecimal calculatedTotal = BigDecimal.ZERO;
         
-        if (orderRequest.getItems() != null) {
-            List<OrderItem> items = orderRequest.getItems()
-            									.stream()
-            									.map(dto -> {
-                FoodResponse realFood = foodClient.getFood(dto.getFoodId());
+		if (orderRequest.getItems() != null) {
+            List<OrderItem> items = orderRequest.getItems().stream().map(dto -> {
+                // FIX: Use Local Inventory Database instead of synchronous HTTP call!
+                Inventory inventory = inventoryRepository.findById(dto.getFoodId())
+                    .orElseThrow(() -> new ResourceNotFoundException("Food ID " + dto.getFoodId() + " not found in local inventory"));
+                
                 OrderItem item = new OrderItem();
-                item.setName(realFood.getFoodName());
+                item.setName(inventory.getFoodName());
                 item.setQuantity(dto.getQuantity());
-                item.setPricePerUnit(realFood.getFoodPrice());
+                item.setPricePerUnit(inventory.getFoodPrice());
                 item.setFoodId(dto.getFoodId());
                 return item;
             }).collect(Collectors.toList());
             
-            // Secure BigDecimal math: Price * Quantity, then sum it all up
             calculatedTotal = items.stream()
                     .map(item -> item.getPricePerUnit().multiply(BigDecimal.valueOf(item.getQuantity())))
                     .reduce(BigDecimal.ZERO, BigDecimal::add);
@@ -107,7 +110,7 @@ public class OrderService {
         try {
             savedOrder = orderRepository.save(newOrder);
         } catch (Exception e) {
-            revertInventory(newOrder); // Roll-back PostgresDB if MongoDB fails
+            //revertInventory(newOrder); // Roll-back PostgresDB if MongoDB fails
             throw new RuntimeException("Failed to save order to database", e);
         }
         
@@ -128,7 +131,8 @@ public class OrderService {
             orderRepository.delete(savedOrder); 
             throw new RuntimeException("Message broker unreachable. Order cancelled to prevent data corruption.", e);
         }
-
+        
+        sendOrderNotification(savedOrder, "Order placed successfully and is awaiting payment.");
         return savedOrder;
     }
 
@@ -190,11 +194,45 @@ public class OrderService {
 
         if (success) {
             order.setOrderStatus(OrderStatus.CONFIRMED);
+            sendOrderNotification(order, "Payment successful! Your order is confirmed."); // NEW
         } else {
             revertInventory(order);
             order.setOrderStatus(OrderStatus.CANCELLED);
+            sendOrderNotification(order, "Payment failed. Your order has been cancelled."); // NEW
         }
         orderRepository.save(order);
+    }
+    
+    private void sendOrderNotification(Order order, String messageText) {
+        try {
+            com.shop.orderingservice.protobuf.CustomerProto customerProto = com.shop.orderingservice.protobuf.CustomerProto.newBuilder()
+                    .setName(order.getCustomer().getName() != null ? order.getCustomer().getName() : "Customer")
+                    .setEmail(order.getCustomer().getEmail() != null ? order.getCustomer().getEmail() : "No Email")
+                    .setPhoneNo(order.getCustomer().getPhoneNo() != null ? order.getCustomer().getPhoneNo() : "N/A")
+                    .build();
+
+            com.shop.orderingservice.protobuf.OrderEventProto.Builder eventBuilder = com.shop.orderingservice.protobuf.OrderEventProto.newBuilder()
+                    .setOrderId(order.getOrderId())
+                    .setStatus(order.getOrderStatus().name())
+                    .setMessage(messageText)
+                    .setTotalAmount(order.getTotalAmount().toString())
+                    .setCustomer(customerProto);
+
+            if (order.getOrderDetails() != null) {
+                for (OrderItem item : order.getOrderDetails()) {
+                    eventBuilder.addItems(com.shop.orderingservice.protobuf.OrderItemProto.newBuilder()
+                            .setName(item.getName())
+                            .setQuantity(item.getQuantity())
+                            .setPricePerUnit(item.getPricePerUnit().toString())
+                            .build());
+                }
+            }
+
+            rabbitTemplate.convertAndSend(exchangeName, notificationRoutingKey, eventBuilder.build().toByteArray());
+            log.info("Successfully published Order Notification for Order ID: {}", order.getOrderId());
+        } catch (Exception e) {
+            log.error("Failed to send Order Notification to RabbitMQ", e);
+        }
     }
 
     public Order updateStatus(String orderId, OrderStatus newStatus) {
@@ -203,7 +241,7 @@ public class OrderService {
         order.setOrderStatus(newStatus);
         return orderRepository.save(order);
     }
-
+    
     public Page<Order> getCustomerOrders(String customerId, int page, int size) {
         int safePage = Math.max(paginationConfig.getSafePage(), page);
         int safeSize = Math.max(1, Math.min(size, paginationConfig.getSafeSize()));

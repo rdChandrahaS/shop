@@ -86,7 +86,8 @@ public class FoodService {
 	
 	@Caching(evict = {
 		@CacheEvict(value = "foods", allEntries = true),
-		@CacheEvict(value = "food", key = "#id")
+		@CacheEvict(value = "food", key = "#id"),
+		@CacheEvict(value = "food_proto", key = "#id")
 	})
 	public ResponseEntity<FoodResponse> updateFood(Long id, FoodRequest updatedFood) {
 		try {
@@ -136,7 +137,8 @@ public class FoodService {
 	
 	@Caching(evict = {
 	        @CacheEvict(value = "foods", allEntries = true),
-	        @CacheEvict(value = "food", key = "#id")
+	        @CacheEvict(value = "food", key = "#id"),
+	        @CacheEvict(value = "food_proto", key = "#id") 
 	    })
     public void deleteFood(Long id) {
         try {

@@ -17,3 +17,31 @@ message PaymentResponseProto {
   bool success = 3;
   string message = 4;
 }
+
+message FoodResponseProto {
+  int64 foodId = 1;
+  string foodName = 2;
+  string foodDescription = 3;
+  string foodPrice = 4;
+}
+
+message OrderItemProto {
+  string name = 1;
+  int32 quantity = 2;
+  string price_per_unit = 3;
+}
+
+message CustomerProto {
+  string name = 1;
+  string email = 2;
+  string phone_no = 3;
+}
+
+message OrderEventProto {
+  string order_id = 1;
+  string status = 2;
+  string message = 3;
+  string total_amount = 4;
+  CustomerProto customer = 5;
+  repeated OrderItemProto items = 6;
+}

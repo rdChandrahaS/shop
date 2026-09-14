@@ -13,6 +13,11 @@ services:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d shop_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
   mongodb:
     image: mongo:latest
@@ -21,6 +26,11 @@ services:
       - "27017:27017"
     volumes:
       - mongodata:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
   redis:
     image: redis:alpine
@@ -29,15 +39,25 @@ services:
       - "6379:6379"
     volumes:
       - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
   rabbitmq:
     image: rabbitmq:3-management-alpine
     container_name: shop-rabbitmq
     ports:
-      - "5672:5672"   # AMQP protocol port
-      - "15672:15672" # Management UI port (http://localhost:15672)
+      - "5672:5672"   
+      - "15672:15672" 
     volumes:
       - rabbitmqdata:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
   # ==========================================
   # 2. SPRING BOOT MICROSERVICES
@@ -47,10 +67,12 @@ services:
     container_name: serviceregistry
     ports:
       - "8761:8761"
+    environment:
+      - JAVA_TOOL_OPTIONS=-Xms256m -Xmx256m
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:8761/actuator/health"]
-      interval: 10s
-      retries: 5
+      interval: 5s
+      retries: 10
 
   apigatewayservice:
     build: ./apigatewayservice
@@ -58,76 +80,98 @@ services:
     ports:
       - "8080:8080"
     environment:
+      - JAVA_TOOL_OPTIONS=-Xms256m -Xmx256m
       - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://serviceregistry:8761/eureka/
       - EUREKA_INSTANCE_PREFER_IP_ADDRESS=true
     depends_on:
-      - serviceregistry
+      serviceregistry:
+        condition: service_healthy
 
   authservice:
     build: ./authservice
     container_name: authservice
     environment:
+      - JAVA_TOOL_OPTIONS=-Xms256m -Xmx256m
       - SPRING_DATASOURCE_URL=jdbc:postgresql://shop-postgres:5432/shop_db
       - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://serviceregistry:8761/eureka/
       - EUREKA_INSTANCE_PREFER_IP_ADDRESS=true
     depends_on:
-      - postgres
-      - serviceregistry
+      postgres:
+        condition: service_healthy
+      serviceregistry:
+        condition: service_healthy
 
   paymentservice:
     build: ./paymentservice
     container_name: paymentservice
     environment:
+      - JAVA_TOOL_OPTIONS=-Xms256m -Xmx256m
       - SPRING_DATASOURCE_URL=jdbc:postgresql://shop-postgres:5432/shop_db
       - SPRING_DATA_REDIS_HOST=shop-redis
       - SPRING_RABBITMQ_HOST=shop-rabbitmq
       - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://serviceregistry:8761/eureka/
       - EUREKA_INSTANCE_PREFER_IP_ADDRESS=true
     depends_on:
-      - postgres
-      - redis
-      - rabbitmq
-      - serviceregistry
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      serviceregistry:
+        condition: service_healthy
 
   messageservice:
     build: ./messageservice
     container_name: messageservice
     environment:
+      - JAVA_TOOL_OPTIONS=-Xms256m -Xmx256m
       - SPRING_RABBITMQ_HOST=shop-rabbitmq
       - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://serviceregistry:8761/eureka/
       - EUREKA_INSTANCE_PREFER_IP_ADDRESS=true
     depends_on:
-      - rabbitmq
-      - serviceregistry
+      rabbitmq:
+        condition: service_healthy
+      serviceregistry:
+        condition: service_healthy
 
   orderingservice:
     build: ./orderingservice
     container_name: orderingservice
     environment:
+      - JAVA_TOOL_OPTIONS=-Xms256m -Xmx256m
       - SPRING_DATASOURCE_URL=jdbc:postgresql://shop-postgres:5432/shop_db
       - SPRING_DATA_MONGODB_URI=mongodb://shop-mongodb:27017/shop-order
       - SPRING_RABBITMQ_HOST=shop-rabbitmq
       - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://serviceregistry:8761/eureka/
       - EUREKA_INSTANCE_PREFER_IP_ADDRESS=true
     depends_on:
-      - postgres
-      - mongodb
-      - rabbitmq
-      - serviceregistry
+      postgres:
+        condition: service_healthy
+      mongodb:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      serviceregistry:
+        condition: service_healthy
 
   foodservice:
     build: ./foodservice
     container_name: foodservice
     environment:
+      - JAVA_TOOL_OPTIONS=-Xms256m -Xmx256m
       - SPRING_DATASOURCE_URL=jdbc:postgresql://shop-postgres:5432/shop_db
       - SPRING_DATA_REDIS_HOST=shop-redis
       - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://serviceregistry:8761/eureka/
       - EUREKA_INSTANCE_PREFER_IP_ADDRESS=true
     depends_on:
-      - postgres
-      - redis
-      - serviceregistry
-      
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      serviceregistry:
+        condition: service_healthy
+        
 # ==========================================
 # 3. PERSISTENT VOLUMES
 # ==========================================

@@ -97,4 +97,19 @@ public class RabbitMQConfig {
         admin.setAutoStartup(true);
         return admin;
     }
+	
+	@Bean
+    public Queue foodUpdateQueue() {
+        return QueueBuilder.durable("ordering_food_update_queue")
+                .withArgument("x-dead-letter-exchange", DLX_NAME)
+                .withArgument("x-dead-letter-routing-key", DLQ_ROUTING_KEY)
+                .build();
+    }
+    
+    @Bean
+    public Binding foodUpdateBinding() {
+        return BindingBuilder.bind(foodUpdateQueue())
+                .to(exchange())
+                .with("food_routing_key"); // Must match the FoodService's routing key exactly
+    }
 }

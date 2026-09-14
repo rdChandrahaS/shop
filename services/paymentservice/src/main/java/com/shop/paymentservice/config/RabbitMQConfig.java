@@ -1,6 +1,9 @@
 package com.shop.paymentservice.config;
 
 
+import org.springframework.amqp.core.Binding;
+import org.springframework.amqp.core.BindingBuilder;
+import org.springframework.amqp.core.DirectExchange;
 import org.springframework.amqp.core.Queue;
 import org.springframework.amqp.core.QueueBuilder;
 import org.springframework.amqp.core.TopicExchange;
@@ -24,6 +27,8 @@ public class RabbitMQConfig {
 
     @Value("${rabbitmq.dlq.routing.key}")
     private String DLQ_ROUTING_KEY;
+    
+    private String DLQ_NAME;
 
     @Bean
     public TopicExchange exchange() {
@@ -43,5 +48,20 @@ public class RabbitMQConfig {
         RabbitAdmin admin = new RabbitAdmin(connectionFactory);
         admin.setAutoStartup(true);
         return admin;
+    }
+    
+    @Bean
+	public DirectExchange deadLetterExchange() {
+		return new DirectExchange(DLX_NAME);
+	}
+	
+	@Bean
+    public Queue deadLetterQueue() {
+        return QueueBuilder.durable(DLQ_NAME).build();
+    }
+		
+	@Bean
+    public Binding dlqBinding() {
+        return BindingBuilder.bind(deadLetterQueue()).to(deadLetterExchange()).with(DLQ_ROUTING_KEY);
     }
 }

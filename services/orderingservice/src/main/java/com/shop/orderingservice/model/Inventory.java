@@ -3,6 +3,9 @@ package com.shop.orderingservice.model;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+
+import java.math.BigDecimal;
+
 import jakarta.persistence.Column;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -24,4 +27,7 @@ public class Inventory {
     
     @Column(name = "food_name")
     private String foodName;
+
+    @Column(name = "food_price", precision = 38, scale = 2)
+    private BigDecimal foodPrice;
 }

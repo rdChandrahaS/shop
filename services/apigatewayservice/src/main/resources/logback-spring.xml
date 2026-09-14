@@ -3,7 +3,7 @@
 
     <!-- Define the log folder and file name -->
     <property name="LOGS_DIR" value="./logs" />
-    <property name="LOG_FILE" value="apigatweayservice" />
+    <property name="LOG_FILE" value="apigatewayservice" />
 
     <!-- 1. Console Appender (Prints to the terminal with colors) -->
     <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
