@@ -1,67 +1,79 @@
 package com.shop.paymentservice.config;
 
-
 import org.springframework.amqp.core.Binding;
 import org.springframework.amqp.core.BindingBuilder;
 import org.springframework.amqp.core.DirectExchange;
 import org.springframework.amqp.core.Queue;
 import org.springframework.amqp.core.QueueBuilder;
 import org.springframework.amqp.core.TopicExchange;
+import org.springframework.amqp.rabbit.connection.ConnectionFactory;
 import org.springframework.amqp.rabbit.core.RabbitAdmin;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.amqp.rabbit.connection.ConnectionFactory;
 
 @Configuration
 public class RabbitMQConfig {
-	
-	@Value("${payment.exchange.key}")
-    private String EXCHANGE;
+
+    @Value("${payment.exchange.key}")
+    private String exchangeName;
 
     @Value("${payment.request.queue}")
-    private String PAYMENT_REQUEST_QUEUE;
+    private String paymentRequestQueueName;
 
-    @Value("${rabbitmq.dlx.name}")
-    private String DLX_NAME;
+    @Value("${payment.request.dlx.name}")
+    private String paymentRequestDlxName;
 
-    @Value("${rabbitmq.dlq.routing.key}")
-    private String DLQ_ROUTING_KEY;
-    
-    private String DLQ_NAME;
+    @Value("${payment.request.dlq.name}")
+    private String paymentRequestDlqName;
+
+    @Value("${payment.request.dlq.routing.key}")
+    private String paymentRequestDlqRoutingKey;
+
+    @Value("${payment.request.routing.key}")
+    private String paymentRequestRoutingKey;
 
     @Bean
     public TopicExchange exchange() {
-        return new TopicExchange(EXCHANGE);
+        return new TopicExchange(exchangeName);
     }
-	
+
+    @Bean
+    public DirectExchange paymentRequestDeadLetterExchange() {
+        return new DirectExchange(paymentRequestDlxName);
+    }
+
+    @Bean
+    public Queue paymentRequestDeadLetterQueue() {
+        return QueueBuilder.durable(paymentRequestDlqName).build();
+    }
+
+    @Bean
+    public Binding paymentRequestDlqBinding() {
+        return BindingBuilder.bind(paymentRequestDeadLetterQueue())
+                .to(paymentRequestDeadLetterExchange())
+                .with(paymentRequestDlqRoutingKey);
+    }
+
     @Bean
     public Queue paymentRequestQueue() {
-        return QueueBuilder.durable(PAYMENT_REQUEST_QUEUE)
-                .withArgument("x-dead-letter-exchange", DLX_NAME)
-                .withArgument("x-dead-letter-routing-key", DLQ_ROUTING_KEY)
+        return QueueBuilder.durable(paymentRequestQueueName)
+                .withArgument("x-dead-letter-exchange", paymentRequestDlxName)
+                .withArgument("x-dead-letter-routing-key", paymentRequestDlqRoutingKey)
                 .build();
     }
-    
+
+    @Bean
+    public Binding requestBinding() {
+        return BindingBuilder.bind(paymentRequestQueue())
+                .to(exchange())
+                .with(paymentRequestRoutingKey);
+    }
+
     @Bean
     public RabbitAdmin rabbitAdmin(ConnectionFactory connectionFactory) {
         RabbitAdmin admin = new RabbitAdmin(connectionFactory);
         admin.setAutoStartup(true);
         return admin;
-    }
-    
-    @Bean
-	public DirectExchange deadLetterExchange() {
-		return new DirectExchange(DLX_NAME);
-	}
-	
-	@Bean
-    public Queue deadLetterQueue() {
-        return QueueBuilder.durable(DLQ_NAME).build();
-    }
-		
-	@Bean
-    public Binding dlqBinding() {
-        return BindingBuilder.bind(deadLetterQueue()).to(deadLetterExchange()).with(DLQ_ROUTING_KEY);
     }
 }

@@ -40,8 +40,18 @@ public class PaymentService {
     private String webhookSecret;
 	
 	public PaymentResponse processPayment(PaymentRequest request) {
-		
-		//Checking if this payment is already processing
+		// The database is the durable source of truth for idempotency.
+		// Redis only prevents concurrent duplicate processing.
+		Payment existingPayment = paymentRepo.findById(request.getId()).orElse(null);
+		if (existingPayment != null) {
+			if (existingPayment.getStatus() == PaymentStatus.SUCCESS
+					|| existingPayment.getStatus() == PaymentStatus.PENDING) {
+				return new PaymentResponse(existingPayment.getStatus(),
+						existingPayment.getTransactionId(), existingPayment.getAmount());
+			}
+		}
+
+		// Checking if this payment is already processing concurrently.
 		String lockKey = "payment:lock:" + request.getId();
 		Boolean isProcessing = redisTemplate.execute(paymentLockScript , List.of(lockKey) , "300"); //300 seconds for payment
 		if(Boolean.FALSE.equals(isProcessing)) {
@@ -75,9 +85,14 @@ public class PaymentService {
 			newPayment.setStatus(response.getStatus());
 			newPayment.setTransactionId(response.getTransactionId());
 			paymentRepo.save(newPayment);
-			
-			log.info("Payment Done by id : {}",request.getId());
-			
+
+			// ONLINE payments intentionally keep the lock while PENDING so a retry
+			// cannot create another gateway order. The webhook releases it after capture.
+			if (response.getStatus() != PaymentStatus.PENDING) {
+				redisTemplate.delete(lockKey);
+			}
+
+			log.info("Payment processed for order id : {}", request.getId());
 			return response;
 		}catch(Exception e) {
 			log.warn("Could not connect to Razorpay");
@@ -91,7 +106,7 @@ public class PaymentService {
 			boolean matched = Utils.verifyWebhookSignature(payload, signature, webhookSecret);
 			if(!matched) {
 				log.warn("ALERT: Invalid Razorpay Webhook Signature detected!");
-				return;
+				throw new SecurityException("Invalid Razorpay webhook signature");
 			}
 			
 			JSONObject jsonPayload = new JSONObject(payload);
@@ -112,6 +127,7 @@ public class PaymentService {
             	payment.setTransactionId(razorPayPaymentID);
             	
             	paymentRepo.save(payment);
+				redisTemplate.delete("payment:lock:" + payment.getOrderId());
             	
             	PaymentResponseProto responseProto = PaymentResponseProto.newBuilder()
                         .setOrderId(payment.getOrderId())

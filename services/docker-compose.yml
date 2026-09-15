@@ -81,6 +81,8 @@ services:
       - "8080:8080"
     environment:
       - JAVA_TOOL_OPTIONS=-Xms256m -Xmx256m
+      - JWT_SECRET=${JWT_SECRET}
+      - GATEWAY_INTERNAL_SECRET=${GATEWAY_INTERNAL_SECRET}
       - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://serviceregistry:8761/eureka/
       - EUREKA_INSTANCE_PREFER_IP_ADDRESS=true
     depends_on:
@@ -92,9 +94,12 @@ services:
     container_name: authservice
     environment:
       - JAVA_TOOL_OPTIONS=-Xms256m -Xmx256m
-      - SPRING_DATASOURCE_URL=jdbc:postgresql://shop-postgres:5432/shop_db
+      - JWT_SECRET=${JWT_SECRET}
       - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://serviceregistry:8761/eureka/
       - EUREKA_INSTANCE_PREFER_IP_ADDRESS=true
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://shop-postgres:5432/shop_db
+      - DB_USERNAME=postgres
+      - DB_PASSWORD=1234
     depends_on:
       postgres:
         condition: service_healthy

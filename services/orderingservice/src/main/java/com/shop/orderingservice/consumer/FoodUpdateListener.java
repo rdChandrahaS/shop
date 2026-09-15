@@ -25,16 +25,18 @@ public class FoodUpdateListener {
             FoodResponseProto proto = FoodResponseProto.parseFrom(data);
             log.info("Received Async Food Update: {} - ${}", proto.getFoodName(), proto.getFoodPrice());
 
-            Inventory inventory = inventoryRepository.findById(proto.getFoodId())
-                    .orElse(new Inventory());
-            
+            java.util.Optional<Inventory> existingInventory = inventoryRepository.findById(proto.getFoodId());
+            Inventory inventory = existingInventory.orElseGet(Inventory::new);
+            boolean isNewInventory = existingInventory.isEmpty();
+
             inventory.setFoodId(proto.getFoodId());
             inventory.setFoodName(proto.getFoodName());
             inventory.setFoodPrice(new BigDecimal(proto.getFoodPrice()));
             
-            // If it's a brand new menu item, give it some default stock
-            if (inventory.getAvailableAmount() == 0) {
-                inventory.setAvailableAmount(100); 
+            // Only initialize stock for a genuinely new inventory record.
+            // An existing item with zero stock must remain out of stock.
+            if (isNewInventory) {
+                inventory.setAvailableAmount(100);
             }
 
             inventoryRepository.save(inventory);

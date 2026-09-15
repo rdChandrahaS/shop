@@ -27,7 +27,8 @@ public class SecurityConfig {
 			.authorizeExchange(exchange -> exchange
 					.pathMatchers(
 							"/auth/**",
-							"/foods/**"
+							"/foods/**",
+							"/payment/webhook"
 					).permitAll()
 					.anyExchange()
 					.authenticated()

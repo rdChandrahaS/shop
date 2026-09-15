@@ -12,7 +12,7 @@ import java.util.Map;
 @Slf4j
 public class DeadLetterQueueListener {
 
-    @RabbitListener(queues = "${rabbitmq.dlq.name}")
+    @RabbitListener(queues = "${payment.request.dlq.name}")
     public void processFailedMessage(Message message) {
         log.error("========== PAYMENT DLQ ALERT ==========");
         
