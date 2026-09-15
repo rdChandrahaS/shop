@@ -4,6 +4,8 @@ import javax.crypto.spec.SecretKeySpec;
 import java.nio.charset.StandardCharsets;
 
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.ApplicationRunner;
+import org.springframework.cloud.gateway.route.RouteLocator;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.annotation.web.reactive.EnableWebFluxSecurity;
@@ -43,5 +45,15 @@ public class SecurityConfig {
 		byte[] keyBytes = jwtSecret.getBytes(StandardCharsets.UTF_8);
 		SecretKeySpec secretKey = new SecretKeySpec(keyBytes, 0, keyBytes.length, "HmacSHA256");
 		return NimbusReactiveJwtDecoder.withSecretKey(secretKey).build();
+	}
+
+	@Bean
+	public ApplicationRunner printRoutes(RouteLocator routeLocator) {
+		return args -> routeLocator.getRoutes()
+				.doOnNext(route ->
+						System.out.println("GATEWAY ROUTE: " + route.getId()
+								+ " -> " + route.getUri()
+								+ " " + route.getPredicate()))
+				.subscribe();
 	}
 }
