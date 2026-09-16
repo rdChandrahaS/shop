@@ -43,6 +43,7 @@ public class PaymentRequestListener {
 
             PaymentRequest request = new PaymentRequest();
             request.setId(requestProto.getOrderId());
+            request.setCustomerId(requestProto.getCustomerId());
             request.setAmount(new BigDecimal(requestProto.getAmount()));
             request.setMode(PaymentMode.valueOf(requestProto.getPaymentMode()));
 
@@ -67,7 +68,8 @@ public class PaymentRequestListener {
             log.info("Sent payment result back for Order ID: {}", requestProto.getOrderId());
 
         } catch (DuplicatePaymentException e) {
-        	log.warn("Duplicate payment attempt detected. Discarding message.", e);
+            log.warn("Payment is already being processed; retrying message", e);
+            throw e;
         } catch (InvalidProtocolBufferException e) {
             log.error("Fatal error: Failed to parse PaymentRequestProto. Sending straight to DLQ.", e);
             throw new AmqpRejectAndDontRequeueException("Invalid Protobuf payload", e);

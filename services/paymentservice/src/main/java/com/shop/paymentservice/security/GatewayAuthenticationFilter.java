@@ -29,6 +29,12 @@ public class GatewayAuthenticationFilter extends OncePerRequestFilter{
 			FilterChain filterChain)throws ServletException, IOException {
 		
 		
+        // Razorpay calls the webhook directly, so it must not be forced through the gateway-secret check.
+        if ("/payment/webhook".equals(request.getRequestURI()) && "POST".equalsIgnoreCase(request.getMethod())) {
+            filterChain.doFilter(request, response);
+            return;
+        }
+
 		String gatewaySecret = request.getHeader("X-Gateway-Secret");
 		if (gatewayInternalSecret == null || !gatewayInternalSecret.equals(gatewaySecret)) {
 			response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Requests must pass through the API gateway");

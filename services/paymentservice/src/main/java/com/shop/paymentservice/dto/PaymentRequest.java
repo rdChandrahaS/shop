@@ -11,13 +11,16 @@ import lombok.Data;
 
 @Data
 public class PaymentRequest {
-	@NotBlank(message = "Order ID is required")
+    @NotBlank(message = "Order ID is required")
     private String id;
-    
-    @NotNull (message = "Payment Mode is required")
+
+    @NotBlank(message = "Customer ID is required")
+    private String customerId;
+
+    @NotNull(message = "Payment Mode is required")
     private PaymentMode mode;
-    
+
     @NotNull(message = "Amount is required")
-    @Positive (message = "Amount must be greater than zero")
+    @Positive(message = "Amount must be greater than zero")
     private BigDecimal amount;
 }

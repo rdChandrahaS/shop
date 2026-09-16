@@ -1,15 +1,18 @@
 package com.shop.paymentservice.service;
 
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
 
 import org.json.JSONObject;
-import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import com.razorpay.Utils;
 import com.shop.paymentservice.dto.PaymentRequest;
@@ -17,8 +20,8 @@ import com.shop.paymentservice.dto.PaymentResponse;
 import com.shop.paymentservice.exception.DuplicatePaymentException;
 import com.shop.paymentservice.exception.PaymentNotFoundException;
 import com.shop.paymentservice.model.Payment;
+import com.shop.paymentservice.model.enums.PaymentMode;
 import com.shop.paymentservice.model.enums.PaymentStatus;
-import com.shop.paymentservice.protobuf.PaymentResponseProto;
 import com.shop.paymentservice.repo.PaymentRepository;
 import com.shop.paymentservice.strategy.PaymentStrategy;
 
@@ -29,164 +32,236 @@ import lombok.extern.slf4j.Slf4j;
 @Service
 @RequiredArgsConstructor
 public class PaymentService {
-	
-	private final Map<String, PaymentStrategy> paymentStrategies;
-	private final PaymentRepository paymentRepo;
-	private final StringRedisTemplate redisTemplate;
+    private final Map<String, PaymentStrategy> paymentStrategies;
+    private final PaymentRepository paymentRepo;
+    private final StringRedisTemplate redisTemplate;
     private final DefaultRedisScript<Boolean> paymentLockScript;
-    private final RabbitTemplate rabbitTemplate;
-	
-	@Value("${razorpay.webhook.secret}")
+    private final PaymentEventPublisher paymentEventPublisher;
+
+    @Value("${razorpay.webhook.secret}")
     private String webhookSecret;
-	
-	public PaymentResponse processPayment(PaymentRequest request) {
-		// The database is the durable source of truth for idempotency.
-		// Redis only prevents concurrent duplicate processing.
-		Payment existingPayment = paymentRepo.findById(request.getId()).orElse(null);
-		if (existingPayment != null) {
-			if (existingPayment.getStatus() == PaymentStatus.SUCCESS
-					|| existingPayment.getStatus() == PaymentStatus.PENDING) {
-				return new PaymentResponse(existingPayment.getStatus(),
-						existingPayment.getTransactionId(), existingPayment.getAmount());
-			}
-		}
 
-		// Checking if this payment is already processing concurrently.
-		String lockKey = "payment:lock:" + request.getId();
-		Boolean isProcessing = redisTemplate.execute(paymentLockScript , List.of(lockKey) , "300"); //300 seconds for payment
-		if(Boolean.FALSE.equals(isProcessing)) {
-		    log.warn("Duplicate payment attempt blocked for Order ID: {}", request.getId());
-		    throw new DuplicatePaymentException("A payment is already processing for this order.");
-		}
-		
-		PaymentStrategy strategy = paymentStrategies.get(request.getMode().name());
-		
-		
-		if (strategy == null) {
-			log.error("Invalid payment mode: {}" , request.getMode());
-			redisTemplate.delete(lockKey); // If the mode is invalid, release the lock so they can try again
-            throw new IllegalArgumentException("Invalid payment mode: " + request.getMode());
-        }
-		
-		try {
-			//Saving the Payment Data into database
-			Payment newPayment = new Payment();
-			newPayment.setAmount(request.getAmount());
-			newPayment.setMode(request.getMode());
-			newPayment.setOrderId(request.getId());
-			newPayment.setStatus(PaymentStatus.PENDING);
-			
-			paymentRepo.save(newPayment);
-			
-			//Processing the payment
-			PaymentResponse response = strategy.processPayment(request);
-			
-			//Updating the payment status
-			newPayment.setStatus(response.getStatus());
-			newPayment.setTransactionId(response.getTransactionId());
-			paymentRepo.save(newPayment);
+    public PaymentResponse processPayment(PaymentRequest request) {
+        validateRequest(request);
 
-			// ONLINE payments intentionally keep the lock while PENDING so a retry
-			// cannot create another gateway order. The webhook releases it after capture.
-			if (response.getStatus() != PaymentStatus.PENDING) {
-				redisTemplate.delete(lockKey);
-			}
+        Payment existing = paymentRepo.findById(request.getId()).orElse(null);
+        if (existing != null) {
+            verifyCustomer(existing, request.getCustomerId());
+            verifyAmount(existing, request.getAmount());
 
-			log.info("Payment processed for order id : {}", request.getId());
-			return response;
-		}catch(Exception e) {
-			log.warn("Could not connect to Razorpay");
-			redisTemplate.delete(lockKey);
-            throw e;
-		}		
-	}
-	
-	public void handleRazorpayWebhook(String payload , String signature) {
-		try {
-			boolean matched = Utils.verifyWebhookSignature(payload, signature, webhookSecret);
-			if(!matched) {
-				log.warn("ALERT: Invalid Razorpay Webhook Signature detected!");
-				throw new SecurityException("Invalid Razorpay webhook signature");
-			}
-			
-			JSONObject jsonPayload = new JSONObject(payload);
-            String eventName = jsonPayload.getString("event");
-            
-            if(eventName.equals("payment.captured")) {
-            	JSONObject paymentEntity = jsonPayload.getJSONObject("payload")
-            										  .getJSONObject("payment")
-            										  .getJSONObject("entity");
-            	
-            	String razorPayOrderID = paymentEntity.getString("order_id");
-                String razorPayPaymentID = paymentEntity.getString("id");
-            	
-            	Payment payment = paymentRepo.findByTransactionId(razorPayOrderID)
-            	        .orElseThrow(() -> new PaymentNotFoundException("Payment Not Found"));
-            	
-            	payment.setStatus(PaymentStatus.SUCCESS);
-            	payment.setTransactionId(razorPayPaymentID);
-            	
-            	paymentRepo.save(payment);
-				redisTemplate.delete("payment:lock:" + payment.getOrderId());
-            	
-            	PaymentResponseProto responseProto = PaymentResponseProto.newBuilder()
-                        .setOrderId(payment.getOrderId())
-                        .setTransactionId(payment.getTransactionId())
-                        .setSuccess(true)
-                        .setMessage("Webhook confirmed payment")
-                        .build();
-                        
-                rabbitTemplate.convertAndSend("shop_exchange", "payment.result.key", responseProto.toByteArray());
-                    
-            	log.info("Payment Success Confirmed for Order: {}", payment.getOrderId());
+            if (existing.getStatus() == PaymentStatus.SUCCESS
+                    || existing.getStatus() == PaymentStatus.PENDING) {
+                return new PaymentResponse(existing.getStatus(),
+                        existing.getTransactionId() != null ? existing.getTransactionId() : existing.getGatewayOrderId(),
+                        existing.getAmount());
             }
-		}catch (Exception e) {
-			log.error("Error processing webhook payload: {}", e.getMessage(), e);
-		}
-	}
-	
-	public ResponseEntity<String> requestRefund(String orderId){
-		Payment payment = paymentRepo.findById(orderId)
-		        .orElseThrow(() -> new PaymentNotFoundException("Invalid OrderID!"));
-		
-		if (payment.getStatus() != PaymentStatus.SUCCESS) {
-			log.info("Asking Refund For Unsuccessful Payment.");
-	        return ResponseEntity.badRequest().body("Only successful payments can be refunded.");
-	    }
-		
-		payment.setStatus(PaymentStatus.REFUND_REQUESTED);
-	    paymentRepo.save(payment);
-	    
-	    log.info("Refund request submitted for manual review for order id : {}.",orderId);
-	    return ResponseEntity.ok("Refund request submitted for manual review.");
-	}
 
-	public List<Payment> getPendingRefunds() {
-		return paymentRepo.findByStatus(PaymentStatus.REFUND_REQUESTED);
-	}
+            if (existing.getStatus() == PaymentStatus.REFUND_REQUESTED
+                    || existing.getStatus() == PaymentStatus.REFUNDED) {
+                throw new IllegalStateException("This payment cannot be processed again.");
+            }
+        }
 
-	public ResponseEntity<String> approveRefund(String orderId) {
-		
-		Payment payment = paymentRepo.findById(orderId)
-		        .orElseThrow(()-> new PaymentNotFoundException("No Order Found"));
-	    
-	    if (payment.getStatus() != PaymentStatus.REFUND_REQUESTED) {
-	        return ResponseEntity.badRequest().body("Payment is not pending a refund.");
-	    }
+        String lockKey = "payment:lock:" + request.getId();
+        Boolean acquired = redisTemplate.execute(paymentLockScript, List.of(lockKey), "300");
+        if (!Boolean.TRUE.equals(acquired)) {
+            throw new DuplicatePaymentException("A payment is already being processed for this order.");
+        }
 
-	    PaymentStrategy strategy = paymentStrategies.get(payment.getMode().name());
-	    
-	    boolean isRefundSuccessful = strategy.processRefund(payment.getTransactionId(), payment.getAmount());
-	    
-	    if (isRefundSuccessful) {
-	        payment.setStatus(PaymentStatus.REFUNDED);
-	        paymentRepo.save(payment);
-	        log.info("Refund approved and processed successfully for Order id : {}.", orderId);
-	        return ResponseEntity.ok("Refund approved and processed successfully.");
-	    } else {
-	    	log.error("Gateway refund failed for Order id : {}.", orderId);
-	        return ResponseEntity.internalServerError().body("Gateway refund failed.");
-	    }
-	}
-	
+        try {
+            PaymentStrategy strategy = paymentStrategies.get(request.getMode().name());
+            if (strategy == null) {
+                throw new IllegalArgumentException("Unsupported payment mode: " + request.getMode());
+            }
+
+            Payment payment = existing != null ? existing : new Payment();
+            payment.setOrderId(request.getId());
+            payment.setCustomerId(request.getCustomerId());
+            payment.setAmount(request.getAmount());
+            payment.setMode(request.getMode());
+            payment.setStatus(PaymentStatus.PENDING);
+            payment.setGatewayOrderId(null);
+            payment.setTransactionId(null);
+
+            try {
+                paymentRepo.saveAndFlush(payment);
+            } catch (DataIntegrityViolationException e) {
+                Payment concurrent = paymentRepo.findById(request.getId()).orElseThrow(() -> e);
+                verifyCustomer(concurrent, request.getCustomerId());
+                verifyAmount(concurrent, request.getAmount());
+                return new PaymentResponse(concurrent.getStatus(),
+                        concurrent.getTransactionId() != null ? concurrent.getTransactionId() : concurrent.getGatewayOrderId(),
+                        concurrent.getAmount());
+            }
+
+            PaymentResponse response = strategy.processPayment(request);
+            payment.setStatus(response.getStatus());
+
+            if (request.getMode() == PaymentMode.ONLINE && response.getStatus() == PaymentStatus.PENDING) {
+                payment.setGatewayOrderId(response.getTransactionId());
+                payment.setTransactionId(null);
+            } else {
+                payment.setTransactionId(response.getTransactionId());
+            }
+
+            paymentRepo.saveAndFlush(payment);
+
+            if (response.getStatus() == PaymentStatus.SUCCESS
+                    || response.getStatus() == PaymentStatus.FAILED) {
+                redisTemplate.delete(lockKey);
+            }
+
+            if (response.getStatus() == PaymentStatus.SUCCESS) {
+                paymentEventPublisher.publishResult(payment, true, "Payment successful");
+            } else if (response.getStatus() == PaymentStatus.FAILED) {
+                paymentEventPublisher.publishResult(payment, false, "Payment failed");
+            }
+
+            return new PaymentResponse(payment.getStatus(),
+                    payment.getTransactionId() != null ? payment.getTransactionId() : payment.getGatewayOrderId(),
+                    payment.getAmount());
+        } catch (RuntimeException e) {
+            redisTemplate.delete(lockKey);
+            throw e;
+        }
+    }
+
+    @Transactional 
+    public void handleRazorpayWebhook(String payload, String signature) {
+        if (payload == null || payload.isBlank() || signature == null || signature.isBlank()) {
+            throw new SecurityException("Missing Razorpay webhook signature or payload");
+        }
+
+        try {
+            if (!Utils.verifyWebhookSignature(payload, signature, webhookSecret)) {
+                throw new SecurityException("Invalid Razorpay webhook signature");
+            }
+
+            JSONObject root = new JSONObject(payload);
+            String event = root.optString("event");
+            if (!event.equals("payment.captured") && !event.equals("payment.failed")) {
+                log.info("Ignoring unsupported Razorpay event: {}", event);
+                return;
+            }
+
+            JSONObject entity = root.getJSONObject("payload")
+                    .getJSONObject("payment")
+                    .getJSONObject("entity");
+
+            String gatewayOrderId = entity.optString("order_id", null);
+            String gatewayPaymentId = entity.optString("id", null);
+            if (gatewayOrderId == null || gatewayOrderId.isBlank()) {
+                throw new IllegalArgumentException("Razorpay webhook does not contain an order_id");
+            }
+
+            Payment payment = paymentRepo.findByGatewayOrderId(gatewayOrderId)
+                    .orElseThrow(() -> new PaymentNotFoundException("Payment not found for gateway order: " + gatewayOrderId));
+
+            if (entity.has("amount")) {
+                long gatewayAmountPaise = entity.getLong("amount");
+                long expectedAmountPaise = payment.getAmount().movePointRight(2).longValueExact();
+                if (gatewayAmountPaise != expectedAmountPaise) {
+                    throw new IllegalArgumentException("Webhook amount does not match the payment amount");
+                }
+            }
+
+            if (event.equals("payment.captured")) {
+                if (payment.getStatus() != PaymentStatus.SUCCESS) {
+                    payment.setStatus(PaymentStatus.SUCCESS);
+                    payment.setTransactionId(gatewayPaymentId);
+                    paymentRepo.save(payment);
+                    paymentEventPublisher.publishResult(payment, true, "Payment captured by Razorpay");
+                }
+            } else {
+                if (payment.getStatus() == PaymentStatus.PENDING) {
+                    payment.setStatus(PaymentStatus.FAILED);
+                    payment.setTransactionId(gatewayPaymentId);
+                    paymentRepo.save(payment);
+                    paymentEventPublisher.publishResult(payment, false, "Payment failed at Razorpay");
+                }
+            }
+
+            redisTemplate.delete("payment:lock:" + payment.getOrderId());
+        } catch (SecurityException | IllegalArgumentException e) {
+            throw e;
+        } catch (Exception e) {
+            log.error("Error processing Razorpay webhook", e);
+            throw new IllegalStateException("Unable to process Razorpay webhook", e);
+        }
+    }
+
+    @Transactional
+    public ResponseEntity<String> requestRefund(String orderId) {
+        Payment payment = paymentRepo.findById(orderId)
+                .orElseThrow(() -> new PaymentNotFoundException("Payment not found for order: " + orderId));
+
+        if (payment.getStatus() != PaymentStatus.SUCCESS) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body("Only successful payments can be refunded.");
+        }
+
+        if (payment.getMode() != PaymentMode.ONLINE || payment.getTransactionId() == null) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body("Refunds are currently supported only for successful online payments.");
+        }
+
+        payment.setStatus(PaymentStatus.REFUND_REQUESTED);
+        paymentRepo.save(payment);
+        return ResponseEntity.ok("Refund request submitted for manual review.");
+    }
+
+    public List<Payment> getPendingRefunds() {
+        return paymentRepo.findByStatus(PaymentStatus.REFUND_REQUESTED);
+    }
+
+    @Transactional
+    public ResponseEntity<String> approveRefund(String orderId) {
+        Payment payment = paymentRepo.findById(orderId)
+                .orElseThrow(() -> new PaymentNotFoundException("Payment not found for order: " + orderId));
+
+        if (payment.getStatus() != PaymentStatus.REFUND_REQUESTED) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body("Payment is not pending a refund.");
+        }
+
+        PaymentStrategy strategy = paymentStrategies.get(payment.getMode().name());
+        if (strategy == null || payment.getTransactionId() == null) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body("Refund is not supported for this payment.");
+        }
+
+        boolean refunded = strategy.processRefund(payment.getTransactionId(), payment.getAmount());
+        if (!refunded) {
+            return ResponseEntity.status(HttpStatus.BAD_GATEWAY)
+                    .body("Payment gateway refund failed. No payment status change was made.");
+        }
+
+        payment.setStatus(PaymentStatus.REFUNDED);
+        paymentRepo.save(payment);
+        return ResponseEntity.ok("Refund approved and processed successfully.");
+    }
+
+    private void validateRequest(PaymentRequest request) {
+        if (request == null || request.getId() == null || request.getId().isBlank()
+                || request.getCustomerId() == null || request.getCustomerId().isBlank()
+                || request.getAmount() == null || request.getAmount().signum() <= 0
+                || request.getMode() == null) {
+            throw new IllegalArgumentException("Invalid payment request");
+        }
+        if (request.getAmount().scale() > 2) {
+            throw new IllegalArgumentException("Payment amount may contain at most two decimal places");
+        }
+    }
+
+    private void verifyCustomer(Payment payment, String customerId) {
+        if (!payment.getCustomerId().equals(customerId)) {
+            throw new SecurityException("Payment does not belong to this customer");
+        }
+    }
+
+    private void verifyAmount(Payment payment, BigDecimal requestedAmount) {
+        if (payment.getAmount().compareTo(requestedAmount) != 0) {
+            throw new IllegalArgumentException("Payment amount does not match the existing order payment");
+        }
+    }
 }

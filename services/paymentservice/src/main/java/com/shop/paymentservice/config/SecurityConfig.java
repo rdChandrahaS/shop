@@ -5,7 +5,6 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
-import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
@@ -19,21 +18,21 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 @EnableMethodSecurity
 public class SecurityConfig {
-	
-	private final GatewayAuthenticationFilter gatewayAuthenticationFilter;
-	@Bean
-	SecurityFilterChain securityFilterChain(HttpSecurity http) {
-		
-		http
-			.csrf(AbstractHttpConfigurer::disable) // Disable CSRF because we are not using browser cookies/sessions
-			.sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-			.authorizeHttpRequests(auth -> auth
-	                .requestMatchers("/payment/webhook").permitAll() // 1. MUST BE PUBLIC: Razorpay needs to hit this without a JWT
-	              	.requestMatchers("/payment/process").authenticated() // 2. MUST BE SECURED: Only internal Gateway traffic should hit this
-	                .anyRequest().authenticated()  // 3. Lock down anything else just in case
-	        )
-			.addFilterBefore(gatewayAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
-		
-		return http.build();
-	}
+    private final GatewayAuthenticationFilter gatewayAuthenticationFilter;
+
+    @Bean
+    SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+        return http
+            .csrf(csrf -> csrf.disable())
+            .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+            .authorizeHttpRequests(auth -> auth
+                .requestMatchers("POST", "/payment/webhook").permitAll()
+                .requestMatchers("POST", "/payment/process").hasRole("USER")
+                .requestMatchers("POST", "/payment/refund/request/**").hasRole("ADMIN")
+                .requestMatchers("GET", "/payment/refund/pending").hasRole("ADMIN")
+                .requestMatchers("POST", "/payment/refund/approve/**").hasRole("ADMIN")
+                .anyRequest().authenticated())
+            .addFilterBefore(gatewayAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
+            .build();
+    }
 }
