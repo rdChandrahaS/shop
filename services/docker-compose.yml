@@ -1,127 +1,136 @@
 services:
-  # ==========================================
-  # 1. DATABASES & BROKERS (INFRASTRUCTURE)
-  # ==========================================
+  # DATABASES & BROKERS (INFRASTRUCTURE)
   postgres:
     image: postgres:15-alpine
     container_name: shop-postgres
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: 1234
-      POSTGRES_DB: shop_db
+      POSTGRES_DB: ${POSTGRES_DB:-shop_db}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
     ports:
-      - "5432:5432"
+      - "${POSTGRES_PORT:-5432}:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d shop_db"]
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 5s
       timeout: 5s
-      retries: 5
+      retries: 10
+      start_period: 10s
+    restart: unless-stopped
 
   mongodb:
-    image: mongo:latest
+    image: mongo:8
     container_name: shop-mongodb
     ports:
-      - "27017:27017"
+      - "${MONGO_PORT:-27017}:27017"
     volumes:
       - mongodata:/data/db
     healthcheck:
-      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
       interval: 5s
       timeout: 5s
-      retries: 5
+      retries: 10
+      start_period: 10s
+    restart: unless-stopped
 
   redis:
-    image: redis:alpine
+    image: redis:7-alpine
     container_name: shop-redis
     ports:
-      - "6379:6379"
+      - "${REDIS_PORT:-6379}:6379"
     volumes:
       - redisdata:/data
+    command: ["redis-server", "--appendonly", "yes"]
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
       timeout: 5s
-      retries: 5
+      retries: 10
+    restart: unless-stopped
 
   rabbitmq:
-    image: rabbitmq:3-management-alpine
+    image: rabbitmq:4-management-alpine
     container_name: shop-rabbitmq
     ports:
-      - "5672:5672"   
-      - "15672:15672" 
+      - "${RABBITMQ_PORT:-5672}:5672"
+      - "${RABBITMQ_MANAGEMENT_PORT:-15672}:15672"
     volumes:
       - rabbitmqdata:/var/lib/rabbitmq
     healthcheck:
       test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
       interval: 5s
       timeout: 5s
-      retries: 5
+      retries: 10
+      start_period: 10s
+    restart: unless-stopped
 
-  # ==========================================
-  # 2. SPRING BOOT MICROSERVICES
-  # ==========================================
+  # SPRING BOOT MICROSERVICES
   serviceregistry:
     build: ./serviceregistry
     container_name: serviceregistry
     ports:
-      - "8761:8761"
+      - "${EUREKA_PORT:-8761}:8761"
     environment:
-      - JAVA_TOOL_OPTIONS=-Xms256m -Xmx256m
+      JAVA_TOOL_OPTIONS: "-Xms256m -Xmx256m"
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:8761/actuator/health"]
-      interval: 5s
-      retries: 10
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8761/actuator/health >/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    restart: unless-stopped
 
   apigatewayservice:
     build: ./apigatewayservice
     container_name: apigatewayservice
     ports:
-      - "8080:8080"
+      - "${GATEWAY_PORT:-8080}:8080"
     environment:
-      - JAVA_TOOL_OPTIONS=-Xms256m -Xmx256m
-      - JWT_SECRET=${JWT_SECRET}
-      - GATEWAY_INTERNAL_SECRET=${GATEWAY_INTERNAL_SECRET}
-      - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://serviceregistry:8761/eureka/
-      - EUREKA_INSTANCE_PREFER_IP_ADDRESS=true
+      JAVA_TOOL_OPTIONS: "-Xms256m -Xmx256m"
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
+      GATEWAY_INTERNAL_SECRET: ${GATEWAY_INTERNAL_SECRET:?GATEWAY_INTERNAL_SECRET is required}
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://serviceregistry:8761/eureka/
+      EUREKA_INSTANCE_PREFER_IP_ADDRESS: "true"
     depends_on:
       serviceregistry:
         condition: service_healthy
+    restart: unless-stopped
 
   authservice:
     build: ./authservice
     container_name: authservice
     environment:
-      - JAVA_TOOL_OPTIONS=-Xms256m -Xmx256m
-      - JWT_SECRET=${JWT_SECRET}
-      - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://serviceregistry:8761/eureka/
-      - EUREKA_INSTANCE_PREFER_IP_ADDRESS=true
-      - SPRING_DATASOURCE_URL=jdbc:postgresql://shop-postgres:5432/shop_db
-      - DB_USERNAME=postgres
-      - DB_PASSWORD=1234
+      JAVA_TOOL_OPTIONS: "-Xms256m -Xmx256m"
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://serviceregistry:8761/eureka/
+      EUREKA_INSTANCE_PREFER_IP_ADDRESS: "true"
+      SPRING_DATASOURCE_URL: jdbc:postgresql://shop-postgres:5432/shop_db
+      DB_USERNAME: ${POSTGRES_USER:-postgres}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
     depends_on:
       postgres:
         condition: service_healthy
       serviceregistry:
         condition: service_healthy
+    restart: unless-stopped
 
   paymentservice:
     build: ./paymentservice
     container_name: paymentservice
     environment:
-      - JAVA_TOOL_OPTIONS=-Xms256m -Xmx256m
-      - SPRING_DATASOURCE_URL=jdbc:postgresql://shop-postgres:5432/shop_db
-      - DB_USERNAME=postgres
-      - DB_PASSWORD=1234
-      - SPRING_DATA_REDIS_HOST=shop-redis
-      - SPRING_RABBITMQ_HOST=shop-rabbitmq
-      - GATEWAY_INTERNAL_SECRET=${GATEWAY_INTERNAL_SECRET}
-      - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://serviceregistry:8761/eureka/
-      - EUREKA_INSTANCE_PREFER_IP_ADDRESS=true
-      - RAZORPAY_API_KEY=${RAZORPAY_API_KEY}
-      - RAZORPAY_API_SECRET=${RAZORPAY_API_SECRET}
-      - RAZORPAY_WEBHOOK_SECRET=${RAZORPAY_WEBHOOK_SECRET}
+      JAVA_TOOL_OPTIONS: "-Xms256m -Xmx256m"
+      SPRING_DATASOURCE_URL: jdbc:postgresql://shop-postgres:5432/shop_db
+      DB_USERNAME: ${POSTGRES_USER:-postgres}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      SPRING_DATA_REDIS_HOST: shop-redis
+      SPRING_RABBITMQ_HOST: shop-rabbitmq
+      GATEWAY_INTERNAL_SECRET: ${GATEWAY_INTERNAL_SECRET:?GATEWAY_INTERNAL_SECRET is required}
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://serviceregistry:8761/eureka/
+      EUREKA_INSTANCE_PREFER_IP_ADDRESS: "true"
+      RAZORPAY_API_KEY: ${RAZORPAY_API_KEY:?RAZORPAY_API_KEY is required}
+      RAZORPAY_API_SECRET: ${RAZORPAY_API_SECRET:?RAZORPAY_API_SECRET is required}
+      RAZORPAY_WEBHOOK_SECRET: ${RAZORPAY_WEBHOOK_SECRET:?RAZORPAY_WEBHOOK_SECRET is required}
     depends_on:
       postgres:
         condition: service_healthy
@@ -131,35 +140,37 @@ services:
         condition: service_healthy
       serviceregistry:
         condition: service_healthy
+    restart: unless-stopped
 
   messageservice:
     build: ./messageservice
     container_name: messageservice
     environment:
-      - JAVA_TOOL_OPTIONS=-Xms256m -Xmx256m
-      - SPRING_RABBITMQ_HOST=shop-rabbitmq
-      - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://serviceregistry:8761/eureka/
-      - EUREKA_INSTANCE_PREFER_IP_ADDRESS=true
+      JAVA_TOOL_OPTIONS: "-Xms256m -Xmx256m"
+      SPRING_RABBITMQ_HOST: shop-rabbitmq
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://serviceregistry:8761/eureka/
+      EUREKA_INSTANCE_PREFER_IP_ADDRESS: "true"
     depends_on:
       rabbitmq:
         condition: service_healthy
       serviceregistry:
         condition: service_healthy
+    restart: unless-stopped
 
   orderingservice:
     build: ./orderingservice
     container_name: orderingservice
     environment:
-      - JAVA_TOOL_OPTIONS=-Xms256m -Xmx256m
-      - JWT_SECRET=${JWT_SECRET}
-      - GATEWAY_INTERNAL_SECRET=${GATEWAY_INTERNAL_SECRET}
-      - SPRING_DATASOURCE_URL=jdbc:postgresql://shop-postgres:5432/shop_db
-      - DB_USERNAME=postgres
-      - DB_PASSWORD=1234
-      - SPRING_DATA_MONGODB_URI=mongodb://shop-mongodb:27017/shop-order
-      - SPRING_RABBITMQ_HOST=shop-rabbitmq
-      - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://serviceregistry:8761/eureka/
-      - EUREKA_INSTANCE_PREFER_IP_ADDRESS=true
+      JAVA_TOOL_OPTIONS: "-Xms256m -Xmx256m"
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
+      GATEWAY_INTERNAL_SECRET: ${GATEWAY_INTERNAL_SECRET:?GATEWAY_INTERNAL_SECRET is required}
+      SPRING_DATASOURCE_URL: jdbc:postgresql://shop-postgres:5432/shop_db
+      DB_USERNAME: ${POSTGRES_USER:-postgres}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      SPRING_DATA_MONGODB_URI: mongodb://shop-mongodb:27017/shop-order
+      SPRING_RABBITMQ_HOST: shop-rabbitmq
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://serviceregistry:8761/eureka/
+      EUREKA_INSTANCE_PREFER_IP_ADDRESS: "true"
     depends_on:
       postgres:
         condition: service_healthy
@@ -169,30 +180,32 @@ services:
         condition: service_healthy
       serviceregistry:
         condition: service_healthy
+    restart: unless-stopped
 
   foodservice:
     build: ./foodservice
     container_name: foodservice
     environment:
-      - JAVA_TOOL_OPTIONS=-Xms256m -Xmx256m
-      - SPRING_DATASOURCE_URL=jdbc:postgresql://shop-postgres:5432/shop_db
-      - SPRING_DATA_REDIS_HOST=shop-redis
-      - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://serviceregistry:8761/eureka/
-      - DB_USERNAME=postgres
-      - DB_PASSWORD=1234
-      - EUREKA_INSTANCE_PREFER_IP_ADDRESS=true
-      - GATEWAY_INTERNAL_SECRET=${GATEWAY_INTERNAL_SECRET}
+      JAVA_TOOL_OPTIONS: "-Xms256m -Xmx256m"
+      SPRING_DATASOURCE_URL: jdbc:postgresql://shop-postgres:5432/shop_db
+      SPRING_DATA_REDIS_HOST: shop-redis
+      SPRING_RABBITMQ_HOST: shop-rabbitmq
+      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://serviceregistry:8761/eureka/
+      DB_USERNAME: ${POSTGRES_USER:-postgres}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      EUREKA_INSTANCE_PREFER_IP_ADDRESS: "true"
+      GATEWAY_INTERNAL_SECRET: ${GATEWAY_INTERNAL_SECRET:?GATEWAY_INTERNAL_SECRET is required}
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
       serviceregistry:
         condition: service_healthy
-        
-# ==========================================
-# 3. PERSISTENT VOLUMES
-# ==========================================
+    restart: unless-stopped
+
 volumes:
   pgdata:
   mongodata:
