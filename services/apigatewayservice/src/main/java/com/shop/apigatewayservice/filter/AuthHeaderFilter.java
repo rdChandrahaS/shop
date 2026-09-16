@@ -22,73 +22,48 @@ public class AuthHeaderFilter implements GlobalFilter, Ordered {
     @Value("${gateway.internal.secret}")
     private String internalSecret;
 
-    @SuppressWarnings("unchecked")
     @Override
-    public Mono<Void> filter(
-            ServerWebExchange exchange,
-            GatewayFilterChain chain) {
-
-        ServerHttpRequest sanitizedRequest = exchange.getRequest()
-                .mutate()
-                .headers(headers -> {
-                    headers.remove("X-User-Id");
-                    headers.remove("X-User-Role");
-                    headers.remove("X-Gateway-Secret");
-                })
-                .build();
-
-        ServerWebExchange sanitizedExchange = exchange
-                .mutate()
-                .request(sanitizedRequest)
-                .build();
+    public Mono<Void> filter(ServerWebExchange exchange, GatewayFilterChain chain) {
+        ServerWebExchange sanitized = exchange.mutate().request(exchange.getRequest().mutate()
+            .headers(headers -> {
+                headers.remove("X-User-Id");
+                headers.remove("X-User-Role");
+                headers.remove("X-Gateway-Secret");
+            }).build()).build();
 
         return ReactiveSecurityContextHolder.getContext()
-                .filter(context ->
-                        context.getAuthentication() != null
-                        && context.getAuthentication().getPrincipal() instanceof Jwt)
-                .map(context ->
-                        (Jwt) context.getAuthentication().getPrincipal())
-                .flatMap(jwt -> {
+            .map(ctx -> ctx.getAuthentication())
+            .filter(auth -> auth != null && auth.getPrincipal() instanceof Jwt)
+            .map(auth -> (Jwt) auth.getPrincipal())
+            .flatMap(jwt -> {
+                String userId = jwt.getSubject();
+                Map<String, Object> realmAccess = jwt.getClaimAsMap("realm_access");
+                String roles = "";
+                if (realmAccess != null && realmAccess.get("roles") instanceof List<?> roleList) {
+                    roles = roleList.stream()
+                        .filter(String.class::isInstance)
+                        .map(String.class::cast)
+                        .map(role -> "ROLE_" + role.toUpperCase())
+                        .collect(Collectors.joining(","));
+                }
 
-                    String userId = jwt.getSubject();
+                ServerHttpRequest request = sanitized.getRequest().mutate()
+                    .header("X-User-Id", userId)
+                    .header("X-User-Role", roles)
+                    .header("X-Gateway-Secret", internalSecret)
+                    .build();
+                return chain.filter(sanitized.mutate().request(request).build());
+            })
+            .switchIfEmpty(chain.filter(addGatewaySecret(sanitized)));
+    }
 
-                    Map<String, Object> realmAccess =
-                            jwt.getClaimAsMap("realm_access");
-
-                    String roles = "";
-
-                    if (realmAccess != null
-                            && realmAccess.containsKey("roles")) {
-
-                        List<String> roleList =
-                                (List<String>) realmAccess.get("roles");
-
-                        roles = roleList.stream()
-                                .map(role ->
-                                        "ROLE_" + role.toUpperCase())
-                                .collect(Collectors.joining(","));
-                    }
-
-                    ServerHttpRequest request =
-                            sanitizedExchange.getRequest()
-                                    .mutate()
-                                    .header("X-User-Id", userId)
-                                    .header("X-User-Role", roles)
-                                    .header("X-Gateway-Secret", internalSecret)
-                                    .build();
-
-                    return chain.filter(
-                            sanitizedExchange
-                                    .mutate()
-                                    .request(request)
-                                    .build());
-                })
-                .switchIfEmpty(
-                        chain.filter(sanitizedExchange));
+    private ServerWebExchange addGatewaySecret(ServerWebExchange exchange) {
+        ServerHttpRequest request = exchange.getRequest().mutate()
+            .header("X-Gateway-Secret", internalSecret)
+            .build();
+        return exchange.mutate().request(request).build();
     }
 
     @Override
-    public int getOrder() {
-        return 0;
-    }
+    public int getOrder() { return Ordered.LOWEST_PRECEDENCE; }
 }
