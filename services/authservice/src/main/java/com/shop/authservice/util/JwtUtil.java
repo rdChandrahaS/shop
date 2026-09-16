@@ -16,36 +16,39 @@ import jakarta.annotation.PostConstruct;
 
 @Component
 public class JwtUtil {
-	
-	@Value("${hmac.sha.key}")
-	private String secretKey;
-	
-	@Value("${jwt.session.expiry}")
-	private long session;
-	
-	private Key key;
-	
-	@PostConstruct
+
+    @Value("${hmac.sha.key}")
+    private String secretKey;
+
+    @Value("${jwt.session.expiry:3600000}")
+    private long sessionExpiryMs;
+
+    private Key key;
+
+    @PostConstruct
     public void init() {
+        if (secretKey == null || secretKey.getBytes(StandardCharsets.UTF_8).length < 32) {
+            throw new IllegalStateException("JWT_SECRET must be at least 32 bytes long");
+        }
+        if (sessionExpiryMs <= 0) {
+            throw new IllegalStateException("jwt.session.expiry must be greater than zero");
+        }
         this.key = Keys.hmacShaKeyFor(secretKey.getBytes(StandardCharsets.UTF_8));
     }
-	
-	public String generateToken(String userId, String userName, Set<String> roles) {
-		
-		Map<String, Object> claims = new HashMap<>();
-		Map<String, Object> realmAccess = new HashMap<>();
-		long now = System.currentTimeMillis();
-		
-		realmAccess.put("roles", roles);
-		claims.put("realm_access", realmAccess);
-		claims.put("username", userName);
-		
-		return Jwts.builder()
-				.claims(claims)
-				.subject(userId)
-				.issuedAt(new Date(now))
-				.expiration(new Date(now + session))
-				.signWith(key)
-				.compact();
-	}
+
+    public String generateToken(String userId, String userName, Set<String> roles) {
+        long now = System.currentTimeMillis();
+
+        Map<String, Object> realmAccess = new HashMap<>();
+        realmAccess.put("roles", roles);
+
+        return Jwts.builder()
+                .claim("realm_access", realmAccess)
+                .claim("username", userName)
+                .subject(userId)
+                .issuedAt(new Date(now))
+                .expiration(new Date(now + sessionExpiryMs))
+                .signWith(key)
+                .compact();
+    }
 }
