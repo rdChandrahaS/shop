@@ -1,9 +1,10 @@
 package com.shop.orderingservice.service;
 
 import java.math.BigDecimal;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.stream.Collectors;
 
 import org.springframework.stereotype.Service;
@@ -25,35 +26,64 @@ public class InventoryService {
 
     private final InventoryRepository inventoryRepository;
 
+    /**
+     * PostgreSQL-only transaction. Pessimistic locks prevent two concurrent
+     * orders from reserving the same stock. IDs are locked in deterministic
+     * order to reduce deadlock risk when orders contain multiple foods.
+     */
     @Transactional("transactionManager")
     public void reserveAndPrice(Order order, List<OrderItemDTO> requestedItems) {
         if (requestedItems == null || requestedItems.isEmpty()) {
             throw new IllegalArgumentException("Order must contain at least one item");
         }
 
+        for (OrderItemDTO item : requestedItems) {
+            if (item == null || item.getFoodId() == null || item.getFoodId() <= 0) {
+                throw new IllegalArgumentException("Each order item must have a valid food ID");
+            }
+            if (item.getQuantity() <= 0 || item.getQuantity() > 100) {
+                throw new IllegalArgumentException("Each item quantity must be between 1 and 100");
+            }
+        }
+
         Map<Long, Integer> quantities = requestedItems.stream()
-            .collect(Collectors.groupingBy(OrderItemDTO::getFoodId, Collectors.summingInt(OrderItemDTO::getQuantity)));
+                .collect(Collectors.groupingBy(
+                        OrderItemDTO::getFoodId,
+                        LinkedHashMap::new,
+                        Collectors.summingInt(OrderItemDTO::getQuantity)));
 
-        if (quantities.values().stream().anyMatch(q -> q == null || q <= 0)) {
-            throw new IllegalArgumentException("Quantity must be greater than zero");
+        List<Long> sortedIds = quantities.keySet().stream().sorted().toList();
+        List<Inventory> stocks = new ArrayList<>();
+
+        // Lock one row at a time in ascending food ID order.
+        for (Long foodId : sortedIds) {
+            Inventory stock = inventoryRepository.findByIdForUpdate(foodId)
+                    .orElseThrow(() -> new ResourceNotFoundException(
+                            "Inventory not found for food ID " + foodId));
+            stocks.add(stock);
         }
 
-        List<Inventory> stocks = inventoryRepository.findAllByIdInForUpdate(quantities.keySet());
-        if (stocks.size() != quantities.size()) {
-            Set<Long> found = stocks.stream().map(Inventory::getFoodId).collect(Collectors.toSet());
-            Long missing = quantities.keySet().stream().filter(id -> !found.contains(id)).findFirst().orElse(null);
-            throw new ResourceNotFoundException("Inventory not found for food ID " + missing);
-        }
+        Map<Long, Inventory> byId = stocks.stream()
+                .collect(Collectors.toMap(Inventory::getFoodId, value -> value));
 
-        Map<Long, Inventory> byId = stocks.stream().collect(Collectors.toMap(Inventory::getFoodId, x -> x));
-        List<OrderItem> orderItems = requestedItems.stream().map(dto -> {
+        List<OrderItem> orderItems = new ArrayList<>(requestedItems.size());
+        for (OrderItemDTO dto : requestedItems) {
             Inventory stock = byId.get(dto.getFoodId());
+
             if (!stock.isActive()) {
                 throw new IllegalArgumentException(stock.getFoodName() + " is currently unavailable");
             }
+
             int required = quantities.get(dto.getFoodId());
             if (stock.getAvailableAmount() < required) {
-                throw new InsufficientInventoryException("Out of stock: " + stock.getFoodName());
+                throw new InsufficientInventoryException(
+                        "Insufficient stock for " + stock.getFoodName()
+                                + ". Available: " + stock.getAvailableAmount()
+                                + ", requested: " + required);
+            }
+
+            if (stock.getFoodPrice() == null || stock.getFoodPrice().signum() <= 0) {
+                throw new IllegalStateException("Invalid price configured for food ID " + dto.getFoodId());
             }
 
             OrderItem item = new OrderItem();
@@ -61,16 +91,17 @@ public class InventoryService {
             item.setName(stock.getFoodName());
             item.setQuantity(dto.getQuantity());
             item.setPricePerUnit(stock.getFoodPrice());
-            return item;
-        }).toList();
+            orderItems.add(item);
+        }
 
         order.setOrderDetails(orderItems);
         order.setTotalAmount(orderItems.stream()
-            .map(i -> i.getPricePerUnit().multiply(BigDecimal.valueOf(i.getQuantity())))
-            .reduce(BigDecimal.ZERO, BigDecimal::add));
+                .map(i -> i.getPricePerUnit().multiply(BigDecimal.valueOf(i.getQuantity())))
+                .reduce(BigDecimal.ZERO, BigDecimal::add));
 
         for (Inventory stock : stocks) {
-            stock.setAvailableAmount(stock.getAvailableAmount() - quantities.get(stock.getFoodId()));
+            int required = quantities.get(stock.getFoodId());
+            stock.setAvailableAmount(stock.getAvailableAmount() - required);
         }
         inventoryRepository.saveAll(stocks);
     }
@@ -78,18 +109,30 @@ public class InventoryService {
     @Transactional("transactionManager")
     public void release(Order order) {
         Map<Long, Integer> quantities = quantities(order);
-        List<Inventory> stocks = inventoryRepository.findAllByIdInForUpdate(quantities.keySet());
-        for (Inventory stock : stocks) {
-            stock.setAvailableAmount(stock.getAvailableAmount() + quantities.get(stock.getFoodId()));
+
+        for (Long foodId : quantities.keySet().stream().sorted().toList()) {
+            Inventory stock = inventoryRepository.findByIdForUpdate(foodId)
+                    .orElseThrow(() -> new ResourceNotFoundException(
+                            "Inventory not found for food ID " + foodId));
+
+            long restored = (long) stock.getAvailableAmount() + quantities.get(foodId);
+            if (restored > Integer.MAX_VALUE) {
+                throw new IllegalStateException("Inventory amount overflow for food ID " + foodId);
+            }
+            stock.setAvailableAmount((int) restored);
+            inventoryRepository.save(stock);
         }
-        inventoryRepository.saveAll(stocks);
     }
 
     private Map<Long, Integer> quantities(Order order) {
-        if (order.getOrderDetails() == null || order.getOrderDetails().isEmpty()) {
+        if (order == null || order.getOrderDetails() == null || order.getOrderDetails().isEmpty()) {
             throw new IllegalArgumentException("Order details cannot be empty");
         }
+
         return order.getOrderDetails().stream()
-            .collect(Collectors.groupingBy(OrderItem::getFoodId, Collectors.summingInt(OrderItem::getQuantity)));
+                .filter(item -> item != null && item.getFoodId() != null && item.getQuantity() > 0)
+                .collect(Collectors.groupingBy(
+                        OrderItem::getFoodId,
+                        Collectors.summingInt(OrderItem::getQuantity)));
     }
 }

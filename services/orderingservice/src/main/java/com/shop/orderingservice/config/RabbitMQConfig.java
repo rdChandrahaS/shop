@@ -53,6 +53,11 @@ public class RabbitMQConfig {
         return new TopicExchange(exchangeName);
     }
 
+    @Bean
+    public TopicExchange foodExchange() {
+        return new TopicExchange("food.exchange");
+    }
+
     // Payment request queue is owned by the payment flow, so its DLQ config
     // must match the declaration in paymentservice exactly.
     @Bean
@@ -132,8 +137,8 @@ public class RabbitMQConfig {
     @Bean
     public Binding foodUpdateBinding() {
         return BindingBuilder.bind(foodUpdateQueue())
-                .to(exchange())
-                .with("food_routing_key");
+                .to(foodExchange())
+                .with("food.update");
     }
 
     @Bean
