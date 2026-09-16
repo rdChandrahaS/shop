@@ -1,122 +1,73 @@
-import { useState } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from './assets/vite.svg'
-import heroImg from './assets/hero.png'
-import './App.css'
+import {useEffect,useMemo,useState} from "react";
+import {motion,AnimatePresence} from "motion/react";
+import {Search,ShoppingBag,User,Heart,Menu,X,ChevronRight,ArrowRight,Star,Plus,Minus,Trash2,Truck,ShieldCheck,Sparkles,LogOut,Package,MapPin} from "lucide-react";
+import "./App.css";
 
-function App() {
-  const [count, setCount] = useState(0)
+const API=import.meta.env.VITE_API_URL||"http://localhost:8080";
+const imgFallback="https://placehold.co/700x500/f0eee8/777?text=Shop";
+const money=v=>`₹${Number(v||0).toFixed(0)}`;
+const readToken=()=>localStorage.getItem("shop-token");
 
-  return (
-    <>
-      <section id="center">
-        <div className="hero">
-          <img src={heroImg} className="base" width="170" height="179" alt="" />
-          <img src={reactLogo} className="framework" alt="React logo" />
-          <img src={viteLogo} className="vite" alt="Vite logo" />
-        </div>
-        <div>
-          <h1>Get started</h1>
-          <p>
-            Edit <code>src/App.jsx</code> and save to test <code>HMR</code>
-          </p>
-        </div>
-        <button
-          type="button"
-          className="counter"
-          onClick={() => setCount((count) => count + 1)}
-        >
-          Count is {count}
-        </button>
-      </section>
-
-      <div className="ticks"></div>
-
-      <section id="next-steps">
-        <div id="docs">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#documentation-icon"></use>
-          </svg>
-          <h2>Documentation</h2>
-          <p>Your questions, answered</p>
-          <ul>
-            <li>
-              <a href="https://vite.dev/" target="_blank">
-                <img className="logo" src={viteLogo} alt="" />
-                Explore Vite
-              </a>
-            </li>
-            <li>
-              <a href="https://react.dev/" target="_blank">
-                <img className="button-icon" src={reactLogo} alt="" />
-                Learn more
-              </a>
-            </li>
-          </ul>
-        </div>
-        <div id="social">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#social-icon"></use>
-          </svg>
-          <h2>Connect with us</h2>
-          <p>Join the Vite community</p>
-          <ul>
-            <li>
-              <a href="https://github.com/vitejs/vite" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#github-icon"></use>
-                </svg>
-                GitHub
-              </a>
-            </li>
-            <li>
-              <a href="https://chat.vite.dev/" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#discord-icon"></use>
-                </svg>
-                Discord
-              </a>
-            </li>
-            <li>
-              <a href="https://x.com/vite_js" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#x-icon"></use>
-                </svg>
-                X.com
-              </a>
-            </li>
-            <li>
-              <a href="https://bsky.app/profile/vite.dev" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#bluesky-icon"></use>
-                </svg>
-                Bluesky
-              </a>
-            </li>
-          </ul>
-        </div>
-      </section>
-
-      <div className="ticks"></div>
-      <section id="spacer"></section>
-    </>
-  )
+function ProductImage({food,className=""}) {
+  const [src,setSrc]=useState(food.imageUrl||imgFallback);
+  return <img className={className} src={src} alt={food.foodName} onError={()=>setSrc(imgFallback)} loading="lazy"/>;
 }
-
-export default App
+function App(){
+ const [foods,setFoods]=useState([]),[loading,setLoading]=useState(true),[error,setError]=useState("");
+ const [query,setQuery]=useState(""),[category,setCategory]=useState("All"),[cart,setCart]=useState(()=>JSON.parse(localStorage.getItem("shop-cart")||"[]"));
+ const [wishlist,setWishlist]=useState(()=>JSON.parse(localStorage.getItem("shop-wishlist")||"[]"));
+ const [cartOpen,setCartOpen]=useState(false),[authOpen,setAuthOpen]=useState(false),[account,setAccount]=useState(()=>JSON.parse(localStorage.getItem("shop-account")||"null"));
+ const [notice,setNotice]=useState("");
+ const token=readToken();
+ const loadFoods=()=>{setLoading(true);setError("");fetch(`${API}/foods`).then(async r=>{if(!r.ok)throw new Error(`Food service returned ${r.status}`);return r.json()}).then(d=>setFoods(Array.isArray(d)?d:[])).catch(e=>setError(e.message||"Unable to load products")).finally(()=>setLoading(false))};
+ useEffect(()=>loadFoods(),[]);
+ useEffect(()=>localStorage.setItem("shop-cart",JSON.stringify(cart)),[cart]);
+ useEffect(()=>localStorage.setItem("shop-wishlist",JSON.stringify(wishlist)),[wishlist]);
+ const categories=useMemo(()=>["All",...new Set(foods.map(f=>f.category).filter(Boolean))],[foods]);
+ const filtered=useMemo(()=>foods.filter(f=>(category==="All"||f.category===category)&&`${f.foodName} ${f.foodDescription} ${f.category}`.toLowerCase().includes(query.toLowerCase())&&f.active),[foods,category,query]);
+ const count=cart.reduce((n,x)=>n+x.qty,0),subtotal=cart.reduce((n,x)=>n+Number(x.foodPrice)*x.qty,0),delivery=subtotal===0||subtotal>=499?0:49;
+ const add=f=>{setCart(c=>{const x=c.find(i=>i.foodId===f.foodId);return x?c.map(i=>i.foodId===f.foodId?{...i,qty:i.qty+1}:i):[...c,{...f,qty:1}]});setNotice("Added to bag");setTimeout(()=>setNotice(""),1600)};
+ const qty=(id,d)=>setCart(c=>c.map(x=>x.foodId===id?{...x,qty:x.qty+d}:x).filter(x=>x.qty>0));
+ const wish=id=>setWishlist(w=>w.includes(id)?w.filter(x=>x!==id):[...w,id]);
+ const logout=()=>{localStorage.removeItem("shop-token");localStorage.removeItem("shop-account");setAccount(null)};
+ const featured=foods.filter(f=>f.active).slice(0,4);
+ return <div className="app">
+  <div className="announcement">FREE DELIVERY ON ORDERS OVER ₹499 <span>•</span> FRESH PICKS, EVERY DAY <Sparkles size={11}/></div>
+  <header className="header"><button className="icon-btn mobile-menu"><Menu/></button><a className="logo" href="#home">shop<i>•</i></a>
+   <nav>{["Home","Shop","Deals","About"].map(x=><a key={x} href={`#${x.toLowerCase()}`}>{x}</a>)}</nav>
+   <div className="header-actions"><div className="search"><Search size={17}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search the menu..."/></div>
+    <button className="icon-btn" onClick={()=>setAuthOpen(true)}><User/>{account&&<span className="status-dot" />}</button>
+    <button className="icon-btn" onClick={()=>setCartOpen(true)}><ShoppingBag/><b className="badge">{count}</b></button>
+   </div>
+  </header>
+  <main id="home">
+   <section className="hero"><div className="hero-copy"><span className="eyebrow">THE SHOP MENU · LIVE FROM YOUR BACKEND</span><h1>Good food.<br/><em>Good mood.</em></h1><p>Browse the latest items, prices, categories and images directly from your Food Service.</p><div className="hero-actions"><a href="#shop" className="primary-btn">Explore menu <ArrowRight size={17}/></a><a href="#deals" className="text-btn">Today's picks <ChevronRight size={15}/></a></div><div className="trust-row"><span><Truck/> Fast delivery</span><span><ShieldCheck/> Secure checkout</span><span><Star/> Rated favourites</span></div></div>
+    <div className="hero-art"><div className="hero-orb"/>{featured[0]?<motion.div className="hero-product" initial={{opacity:0,scale:.8,rotate:5}} animate={{opacity:1,scale:1,rotate:-3}} transition={{type:"spring"}}><ProductImage food={featured[0]}/><div><span>FEATURED</span><strong>{featured[0].foodName}</strong><small>{featured[0].category}</small><b>{money(featured[0].foodPrice)}</b></div></motion.div>:<div className="hero-empty">Your menu will appear here</div>}</div>
+   </section>
+   <section className="category-strip" id="shop"><div className="section-head"><div><span className="eyebrow">EXPLORE</span><h2>Shop by category</h2></div></div><div className="categories">{categories.map((c,i)=><button className={category===c?"active":""} key={c} onClick={()=>setCategory(c)}><span>{c==="All"?"✨":["🍔","🍕","🥗","🍰","🥤","🍟","🌯"][i%7]}</span>{c}</button>)}</div></section>
+   <section className="deal-banner" id="deals"><div><span className="eyebrow">SHOP EXPERIENCE</span><h2>Everything on the menu.<br/><em>Nothing hardcoded.</em></h2><p>Products, categories and images update whenever your Food Service changes.</p><a className="light-btn" href="#products">Browse live menu <ArrowRight size={16}/></a></div><div className="deal-emoji">🍽️</div></section>
+   <section className="products-section" id="products"><div className="section-head"><div><span className="eyebrow">LIVE CATALOGUE</span><h2>{category==="All"?"Popular right now":category}</h2></div><span className="result-count">{filtered.length} available</span></div>
+    {loading?<div className="state"><div className="spinner"/><h3>Loading your menu…</h3><p>Fetching the latest products from Food Service.</p></div>:error?<div className="state error"><div>⚠️</div><h3>Couldn't load the menu</h3><p>{error}</p><button className="primary-btn" onClick={loadFoods}>Retry</button></div>:filtered.length===0?<div className="state"><div>🍽️</div><h3>No products found</h3><p>Try another search or category.</p></div>:
+    <div className="product-grid">{filtered.map((f,i)=><motion.article className="product-card" key={f.foodId} layout initial={{opacity:0,y:18}} whileInView={{opacity:1,y:0}} viewport={{once:true,amount:.1}}><div className="product-image-wrap"><ProductImage food={f}/><button className={`wish ${wishlist.includes(f.foodId)?"liked":""}`} onClick={()=>wish(f.foodId)}><Heart size={18} fill={wishlist.includes(f.foodId)?"currentColor":"none"}/></button>{i<2&&<span className="product-tag">FRESH</span>}</div><div className="product-info"><div className="rating"><Star size={12} fill="currentColor"/> 4.8</div><h3>{f.foodName}</h3><p>{f.foodDescription}</p><small className="category-label">{f.category}</small><div className="product-bottom"><strong>{money(f.foodPrice)}</strong><button className="add-btn" onClick={()=>add(f)}><Plus size={16}/> Add</button></div></div></motion.article>)}</div>}
+   </section>
+   <section className="perks">{[["🚀","Fast delivery","Fresh orders to your door."],["🌿","Fresh ingredients","Quality from your catalogue."],["💳","Easy payments","Secure payment flow."],["↩","Order support","Track your order status."]].map(x=><div key={x[1]}><span>{x[0]}</span><div><strong>{x[1]}</strong><small>{x[2]}</small></div></div>)}</section>
+   <section className="story" id="about"><div className="story-art"><span>🥗</span><div className="mini-card"><b>Live catalogue</b><br/>powered by your services.</div></div><div><span className="eyebrow">WHY SHOP</span><h2>Simple food, <em>done right.</em></h2><p>The storefront is intentionally data-driven: your Food Service owns the catalogue while this UI handles discovery, favourites, cart and checkout.</p><a href="#products" className="text-btn">Explore the menu <ArrowRight size={16}/></a></div></section>
+   <section className="newsletter"><span className="eyebrow">STAY IN THE LOOP</span><h2>First dibs on <em>the good stuff.</em></h2><p>Connect this form to your messaging service when you're ready.</p><div className="subscribe"><input placeholder="Your email address"/><button onClick={()=>setNotice("Newsletter endpoint can be connected here.")}>Subscribe <ArrowRight size={16}/></button></div></section>
+  </main>
+  <footer><div className="footer-main"><div><a className="logo">shop<i>•</i></a><p>Good food. Good mood.<br/>Powered by your backend.</p></div><div><b>Shop</b><a href="#products">All products</a><a href="#deals">Deals</a><a href="#shop">Categories</a></div><div><b>Help</b><a href="#about">About us</a><a href="#">Delivery info</a><a href="#">Contact</a></div><div><b>Account</b><a href="#" onClick={e=>{e.preventDefault();setAuthOpen(true)}}>{account?"My account":"Sign in"}</a><a href="#" onClick={e=>{e.preventDefault();setCartOpen(true)}}>Cart ({count})</a>{account&&<a href="#" onClick={e=>{e.preventDefault();logout()}}>Sign out</a>}</div></div><div className="footer-bottom"><span>© 2026 shop.</span><span>Privacy · Terms · Cookies</span></div></footer>
+  <AnimatePresence>{cartOpen&&<Cart cart={cart} subtotal={subtotal} delivery={delivery} qty={qty} token={token} onClose={()=>setCartOpen(false)} notify={setNotice}/>}</AnimatePresence>
+  <AnimatePresence>{authOpen&&<Auth onClose={()=>setAuthOpen(false)} setAccount={setAccount}/>}</AnimatePresence>
+  <AnimatePresence>{notice&&<motion.div className="toast" initial={{opacity:0,y:20}} animate={{opacity:1,y:0}} exit={{opacity:0,y:20}}>{notice}</motion.div>}</AnimatePresence>
+ </div>
+}
+function Cart({cart,subtotal,delivery,qty,token,onClose,notify}){
+ const [customer,setCustomer]=useState({name:"",email:"",phoneNo:""}),[mode,setMode]=useState("COD"),[busy,setBusy]=useState(false),[done,setDone]=useState(null);
+ const checkout=async()=>{if(!token){notify("Please sign in before checkout");return}setBusy(true);try{const r=await fetch(`${API}/order`,{method:"POST",headers:{"Content-Type":"application/json","Authorization":`Bearer ${token}`},body:JSON.stringify({customer,items:cart.map(x=>({foodId:x.foodId,quantity:x.qty})),mode})});if(!r.ok)throw new Error((await r.text())||`Order failed (${r.status})`);const order=await r.json();setDone(order);localStorage.removeItem("shop-cart");notify("Order placed successfully");}catch(e){notify(e.message)}finally{setBusy(false)}};
+ return <motion.div className="overlay" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}} onClick={onClose}><motion.aside className="drawer" initial={{x:"100%"}} animate={{x:0}} exit={{x:"100%"}} onClick={e=>e.stopPropagation()}><div className="drawer-head"><div><span className="eyebrow">YOUR BAG</span><h2>{done?"Order placed":"Shopping cart"}</h2></div><button className="icon-btn" onClick={onClose}><X/></button></div>{done?<div className="success"><div>🎉</div><h3>Order #{done.orderId}</h3><p>Your order is <b>{done.orderStatus}</b>. Total {money(done.totalAmount)}.</p><button className="primary-btn full" onClick={onClose}>Continue shopping</button></div>:cart.length===0?<div className="empty"><div>🛍️</div><h3>Your bag is empty</h3><p>Add something delicious and it'll appear here.</p></div>:<><div className="cart-list">{cart.map(x=><div className="cart-item" key={x.foodId}><ProductImage food={x}/><div><h3>{x.foodName}</h3><strong>{money(x.foodPrice)}</strong><div className="qty"><button onClick={()=>qty(x.foodId,-1)}><Minus size={13}/></button><span>{x.qty}</span><button onClick={()=>qty(x.foodId,1)}><Plus size={13}/></button></div></div><button className="trash" onClick={()=>qty(x.foodId,-99)}><Trash2 size={16}/></button></div>)}</div><div className="checkout-form"><input placeholder="Name" value={customer.name} onChange={e=>setCustomer({...customer,name:e.target.value})}/><input placeholder="Email" type="email" value={customer.email} onChange={e=>setCustomer({...customer,email:e.target.value})}/><input placeholder="Phone" value={customer.phoneNo} onChange={e=>setCustomer({...customer,phoneNo:e.target.value})}/><select value={mode} onChange={e=>setMode(e.target.value)}><option>COD</option><option>UPI</option><option>ONLINE</option></select></div><div className="cart-summary"><div><span>Subtotal</span><b>{money(subtotal)}</b></div><div><span>Delivery</span><b>{delivery?"₹49":"FREE"}</b></div><div className="total"><span>Total</span><b>{money(subtotal+delivery)}</b></div><button className="primary-btn full" onClick={checkout} disabled={busy}>{busy?"Placing order…":"Place order"} <ArrowRight size={17}/></button><small><ShieldCheck size={13}/> Secure checkout</small></div></>}</motion.aside></motion.div>
+}
+function Auth({onClose,setAccount}){
+ const [login,setLogin]=useState(true),[form,setForm]=useState({username:"",password:"",name:"",email:""}),[msg,setMsg]=useState(""),[busy,setBusy]=useState(false);
+ const submit=async e=>{e.preventDefault();setBusy(true);setMsg("");try{const r=await fetch(`${API}/auth/${login?"login":"register"}`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(login?{username:form.username,password:form.password}:{...form,roles:["USER"]})});if(!r.ok)throw new Error((await r.text())||"Authentication failed");if(login){const d=await r.json();localStorage.setItem("shop-token",d.token);localStorage.setItem("shop-account",JSON.stringify(d));setAccount(d);onClose()}else{setLogin(true);setMsg("Account created. Please sign in.")}}catch(e){setMsg(e.message)}finally{setBusy(false)}};
+ return <motion.div className="overlay" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}} onClick={onClose}><motion.div className="auth-modal" initial={{opacity:0,y:20}} animate={{opacity:1,y:0}} onClick={e=>e.stopPropagation()}><button className="close-auth" onClick={onClose}><X/></button><span className="eyebrow">WELCOME TO SHOP</span><h2>{login?"Welcome back.":"Create your account."}</h2><p>{login?"Sign in to checkout and access your account.":"Join for faster checkout and your own shop account."}</p><form onSubmit={submit}>{!login&&<><input required placeholder="Full name" value={form.name} onChange={e=>setForm({...form,name:e.target.value})}/><input required type="email" placeholder="Email" value={form.email} onChange={e=>setForm({...form,email:e.target.value})}/></>}<input required placeholder="Username" value={form.username} onChange={e=>setForm({...form,username:e.target.value})}/><input required type="password" placeholder="Password" value={form.password} onChange={e=>setForm({...form,password:e.target.value})}/>{msg&&<div className="form-msg">{msg}</div>}<button className="primary-btn full" disabled={busy}>{busy?"Please wait…":login?"Sign in":"Create account"} <ArrowRight size={16}/></button></form><button className="switch-auth" onClick={()=>{setLogin(!login);setMsg("")}}>{login?"New here? Create an account":"Already have an account? Sign in"}</button></motion.div></motion.div>
+}
+export default App;

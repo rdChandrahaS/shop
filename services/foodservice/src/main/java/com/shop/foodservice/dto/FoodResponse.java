@@ -14,8 +14,11 @@ import lombok.ToString;
 @AllArgsConstructor
 @ToString
 public class FoodResponse {
-	private Long foodId;
-	private String foodName;
-	private String foodDescription;
-	private BigDecimal foodPrice;
+    private Long foodId;
+    private String foodName;
+    private String foodDescription;
+    private BigDecimal foodPrice;
+    private String imageUrl;
+    private String category;
+    private boolean active;
 }

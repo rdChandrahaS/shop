@@ -8,6 +8,7 @@ import com.shop.orderingservice.model.enums.OrderStatus;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
+import jakarta.validation.constraints.Pattern;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -16,11 +17,11 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 public class OrderEventDTO {
-	
-	private String orderId;
-	private OrderStatus status;	
-	private String message;
-	private BigDecimal totalAmount;    
+
+    private String orderId;
+    private OrderStatus status;
+    private String message;
+    private BigDecimal totalAmount;
     private CustomerDTO customer;
 
     @NotEmpty(message = "Order must contain at least one item")
@@ -28,5 +29,6 @@ public class OrderEventDTO {
     private List<OrderItemDTO> items;
 
     @NotBlank(message = "Payment mode is required")
+    @Pattern(regexp = "COD|UPI|ONLINE", message = "Payment mode must be COD, UPI or ONLINE")
     private String mode;
 }

@@ -23,6 +23,9 @@ message FoodResponseProto {
   string foodName = 2;
   string foodDescription = 3;
   string foodPrice = 4;
+  string imageUrl = 5;
+  string category = 6;
+  bool active = 7;
 }
 
 message OrderItemProto {

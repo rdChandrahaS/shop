@@ -17,6 +17,7 @@ import com.shop.paymentservice.dto.PaymentResponse;
 import com.shop.paymentservice.model.Payment;
 import com.shop.paymentservice.service.PaymentService;
 
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
@@ -29,7 +30,7 @@ public class PaymentController {
 	
 	@PostMapping("/process")
 	public PaymentResponse processPayment(
-			@RequestBody PaymentRequest request,
+			@Valid @RequestBody PaymentRequest request,
 			@RequestHeader("X-User-Id") String userId) {
 		log.info("Processing payment for user: {}", userId);
 		return paymentService.processPayment(request);

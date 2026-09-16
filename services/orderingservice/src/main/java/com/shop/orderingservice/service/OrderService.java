@@ -2,7 +2,6 @@ package com.shop.orderingservice.service;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
-import java.util.stream.Collectors;
 import java.util.List;
 import java.util.Map;
 
@@ -13,20 +12,16 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 import com.shop.orderingservice.config.PaginationConfig;
 import com.shop.orderingservice.dto.OrderEventDTO;
 import com.shop.orderingservice.exception.InsufficientInventoryException;
 import com.shop.orderingservice.exception.OrderNotFoundException;
-import com.shop.orderingservice.exception.ResourceNotFoundException;
 import com.shop.orderingservice.model.Customer;
-import com.shop.orderingservice.model.Inventory;
 import com.shop.orderingservice.model.Order;
 import com.shop.orderingservice.model.OrderItem;
 import com.shop.orderingservice.model.enums.OrderStatus;
 import com.shop.orderingservice.protobuf.PaymentRequestProto;
-import com.shop.orderingservice.repo.InventoryRepository;
 import com.shop.orderingservice.repo.OrderRepository;
 
 import lombok.RequiredArgsConstructor;
@@ -38,7 +33,7 @@ import lombok.extern.slf4j.Slf4j;
 public class OrderService {
 
     private final OrderRepository orderRepository;
-    private final InventoryRepository inventoryRepository;
+    private final InventoryService inventoryService;
     private final RabbitTemplate rabbitTemplate;
     private final PaginationConfig paginationConfig;
     
@@ -58,7 +53,6 @@ public class OrderService {
                 );
     }
     
-    @Transactional
     public Order processAndPlaceOrder(OrderEventDTO orderRequest, String tokenUserId) {
         
     	// 1. MAP DTO TO ENTITY
@@ -74,34 +68,8 @@ public class OrderService {
         }
         newOrder.setCustomer(customer);
         
-		BigDecimal calculatedTotal = BigDecimal.ZERO;
+		inventoryService.reserveAndPrice(newOrder, orderRequest.getItems());
         
-		if (orderRequest.getItems() != null) {
-            List<OrderItem> items = orderRequest.getItems().stream().map(dto -> {
-                // FIX: Use Local Inventory Database instead of synchronous HTTP call!
-                Inventory inventory = inventoryRepository.findById(dto.getFoodId())
-                    .orElseThrow(() -> new ResourceNotFoundException("Food ID " + dto.getFoodId() + " not found in local inventory"));
-                
-                OrderItem item = new OrderItem();
-                item.setName(inventory.getFoodName());
-                item.setQuantity(dto.getQuantity());
-                item.setPricePerUnit(inventory.getFoodPrice());
-                item.setFoodId(dto.getFoodId());
-                return item;
-            }).collect(Collectors.toList());
-            
-            calculatedTotal = items.stream()
-                    .map(item -> item.getPricePerUnit().multiply(BigDecimal.valueOf(item.getQuantity())))
-                    .reduce(BigDecimal.ZERO, BigDecimal::add);
-                    
-            newOrder.setOrderDetails(items);
-        }
-        
-        newOrder.setTotalAmount(calculatedTotal);
-        
-        // 2. DEDUCT INVENTORY (Fast Transaction)
-        deductInventory(newOrder);
-
         // 3. Save order as pending
         newOrder.setOrderStatus(OrderStatus.PENDING);
         newOrder.setOrderDate(LocalDateTime.now());
@@ -110,7 +78,7 @@ public class OrderService {
         try {
             savedOrder = orderRepository.save(newOrder);
         } catch (Exception e) {
-            //revertInventory(newOrder); // Roll-back PostgresDB if MongoDB fails
+            inventoryService.release(newOrder); // Compensating transaction in PostgreSQL
             throw new RuntimeException("Failed to save order to database", e);
         }
         
@@ -127,7 +95,7 @@ public class OrderService {
             // Send raw bytes through RabbitMQ using the routing key
             rabbitTemplate.convertAndSend(exchangeName, requestRoutingKey, paymentRequestProto.toByteArray());
         } catch(Exception e) {
-            revertInventory(newOrder); 
+            inventoryService.release(newOrder); 
             orderRepository.delete(savedOrder); 
             throw new RuntimeException("Message broker unreachable. Order cancelled to prevent data corruption.", e);
         }
@@ -136,54 +104,6 @@ public class OrderService {
         return savedOrder;
     }
 
-    public void deductInventory(Order order) {
-        if (order.getOrderDetails() == null || order.getOrderDetails().isEmpty()) {
-        	throw new IllegalArgumentException("Order details cannot be empty!");
-        }
-        
-        Map<Long, Integer> itemQuantities = order.getOrderDetails()
-        		.stream()
-                .collect(Collectors.groupingBy(OrderItem::getFoodId, Collectors.summingInt(OrderItem::getQuantity)));
-
-        List<Inventory> stocks = inventoryRepository.findAllByIdInForUpdate(itemQuantities.keySet());
-
-        if (stocks.size() != itemQuantities.size()) {
-            throw new RuntimeException("Database mismatch: Missing inventory records.");
-        }
-
-        for (Inventory stock : stocks) {
-            int required = itemQuantities.get(stock.getFoodId());
-            if (required <= 0) {
-                throw new IllegalArgumentException("Quantity must be greater than zero");
-            }
-            if (stock.getAvailableAmount() < required) {
-                throw new InsufficientInventoryException("Out of stock: " + stock.getFoodName());
-            }
-            stock.setAvailableAmount(stock.getAvailableAmount() - required);
-        }
-        inventoryRepository.saveAll(stocks);
-    }
-
-    @Transactional
-    public void revertInventory(Order order) {
-        if (order.getOrderDetails() == null || order.getOrderDetails().isEmpty()) {
-            return;
-        }
-
-        Map<Long, Integer> itemQuantities = order.getOrderDetails().stream()
-                .collect(Collectors.groupingBy(OrderItem::getFoodId, Collectors.summingInt(OrderItem::getQuantity)));
-
-        // Re-acquire locks to add stock back safely
-        List<Inventory> stocks = inventoryRepository.findAllByIdInForUpdate(itemQuantities.keySet());
-
-        for (Inventory stock : stocks) {
-            int toAddBack = itemQuantities.get(stock.getFoodId());
-            stock.setAvailableAmount(stock.getAvailableAmount() + toAddBack);
-        }
-        inventoryRepository.saveAll(stocks);
-    }
-
-    @Transactional
     public void handlePaymentResult(String orderId, boolean success) {
         Order order = orderRepository.findById(orderId)
                 .orElseThrow(() -> new OrderNotFoundException("Order not found: " + orderId));
@@ -196,7 +116,7 @@ public class OrderService {
             order.setOrderStatus(OrderStatus.CONFIRMED);
             sendOrderNotification(order, "Payment successful! Your order is confirmed."); // NEW
         } else {
-            revertInventory(order);
+            inventoryService.release(order);
             order.setOrderStatus(OrderStatus.CANCELLED);
             sendOrderNotification(order, "Payment failed. Your order has been cancelled."); // NEW
         }
