@@ -1,16 +1,31 @@
-# React + Vite
+# Shop Frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+React + Vite storefront connected to the Shop API Gateway.
 
-Currently, two official plugins are available:
+## Backend
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+The frontend expects the API Gateway at:
 
-## React Compiler
+`http://localhost:8080`
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+To change it, create `.env` from `.env.example`:
 
-## Expanding the ESLint configuration
+`VITE_API_URL=http://localhost:8080`
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+## Run
+
+```bash
+npm install
+npm run dev
+```
+
+## Backend-connected behavior
+
+- `GET /foods` supplies the live catalogue, images, prices and categories.
+- `POST /auth/register` creates a USER account.
+- `POST /auth/login` authenticates and stores the JWT locally.
+- `POST /order` is used for checkout; the backend calculates authoritative food prices and totals.
+- `GET /order?page=0&size=10` loads the authenticated user's orders.
+- ADMIN JWTs unlock the catalogue management UI using `POST/PUT/DELETE /foods`.
+- No client-supplied role is sent during registration.
+- The frontend never calls individual microservices directly; it uses the API Gateway.
