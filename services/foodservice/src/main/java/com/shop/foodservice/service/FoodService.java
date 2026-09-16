@@ -1,13 +1,9 @@
 package com.shop.foodservice.service;
 
 import java.util.List;
-import java.util.stream.Collectors;
 
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
-import org.springframework.cache.annotation.Caching;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -15,79 +11,72 @@ import com.shop.foodservice.dto.FoodRequest;
 import com.shop.foodservice.dto.FoodResponse;
 import com.shop.foodservice.exception.ResourceNotFoundException;
 import com.shop.foodservice.model.Food;
-import com.shop.foodservice.protobuf.FoodResponseProto;
-import com.shop.foodservice.publisher.FoodEventPublisher;
+import com.shop.foodservice.model.FoodOutboxEvent;
+import com.shop.foodservice.model.FoodOutboxEvent.EventType;
+import com.shop.foodservice.proto.FoodEvent;
+import com.shop.foodservice.repo.FoodOutboxRepository;
 import com.shop.foodservice.repo.FoodRepository;
 
 import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
 
-@Slf4j
 @Service
 @RequiredArgsConstructor
 public class FoodService {
 
     private final FoodRepository foodRepository;
-    private final FoodEventPublisher foodEventPublisher;
+    private final FoodOutboxRepository outboxRepository;
 
-    private FoodResponse toResponse(Food food) {
-        return new FoodResponse(
-            food.getFoodId(),
-            food.getFoodName(),
-            food.getFoodDescription(),
-            food.getFoodPrice(),
-            food.getImageUrl() == null || food.getImageUrl().isBlank() ? null : food.getImageUrl(),
-            food.getCategory() == null || food.getCategory().isBlank() ? "Uncategorized" : food.getCategory(),
-            food.isActive()
-        );
-    }
-
-    private FoodResponseProto toProto(Food food) {
-        return FoodResponseProto.newBuilder()
-            .setFoodId(food.getFoodId())
-            .setFoodName(food.getFoodName())
-            .setFoodDescription(food.getFoodDescription())
-            .setFoodPrice(food.getFoodPrice().toString())
-            .setImageUrl(food.getImageUrl() == null ? "" : food.getImageUrl())
-            .setCategory(food.getCategory() == null ? "Uncategorized" : food.getCategory())
-            .setActive(food.isActive())
-            .build();
-    }
-
-    @Cacheable(value = "foods")
     @Transactional(readOnly = true)
+    @Cacheable(value = "foods")
     public List<FoodResponse> getFoods() {
-        return foodRepository.findAll().stream()
-            .map(this::toResponse)
-            .collect(Collectors.toList());
+        return foodRepository.findAllByActiveTrueOrderByFoodNameAsc()
+                .stream()
+                .map(this::toResponse)
+                .toList();
     }
 
-    @CacheEvict(value = "foods", allEntries = true)
+    @Transactional(readOnly = true)
+    public FoodResponse getFood(Long id) {
+        return toResponse(findFood(id));
+    }
+
     @Transactional
-    public ResponseEntity<FoodResponse> addFood(FoodRequest request) {
+    @CacheEvict(value = "foods", allEntries = true)
+    public FoodResponse addFood(FoodRequest request) {
         Food food = new Food();
         apply(food, request);
+
         Food saved = foodRepository.save(food);
-        FoodResponse response = toResponse(saved);
-        foodEventPublisher.broadcastFoodUpdate(toProto(saved).toByteArray());
-        return ResponseEntity.status(HttpStatus.CREATED).body(response);
+        saveOutbox(EventType.CREATED, saved);
+
+        return toResponse(saved);
     }
 
-    @Caching(evict = {
-        @CacheEvict(value = "foods", allEntries = true),
-        @CacheEvict(value = "food", key = "#id"),
-        @CacheEvict(value = "food_proto", key = "#id")
-    })
     @Transactional
-    public ResponseEntity<FoodResponse> updateFood(Long id, FoodRequest request) {
-        Food food = foodRepository.findById(id)
-            .orElseThrow(() -> new ResourceNotFoundException("Food not found with ID: " + id));
-
+    @CacheEvict(value = "foods", allEntries = true)
+    public FoodResponse updateFood(Long id, FoodRequest request) {
+        Food food = findFood(id);
         apply(food, request);
-        Food saved = foodRepository.save(food);
-        foodEventPublisher.broadcastFoodUpdate(toProto(saved).toByteArray());
 
-        return ResponseEntity.ok(toResponse(saved));
+        Food saved = foodRepository.save(food);
+        saveOutbox(EventType.UPDATED, saved);
+
+        return toResponse(saved);
+    }
+
+    @Transactional
+    @CacheEvict(value = "foods", allEntries = true)
+    public void deleteFood(Long id) {
+        Food food = findFood(id);
+
+        saveOutbox(EventType.DELETED, food);
+        foodRepository.delete(food);
+    }
+
+    private Food findFood(Long id) {
+        return foodRepository.findById(id)
+                .orElseThrow(() ->
+                        new ResourceNotFoundException("Food not found with id: " + id));
     }
 
     private void apply(Food food, FoodRequest request) {
@@ -96,35 +85,47 @@ public class FoodService {
         food.setFoodPrice(request.getFoodPrice());
         food.setImageUrl(request.getImageUrl().trim());
         food.setCategory(request.getCategory().trim());
-        food.setActive(request.getActive() == null || request.getActive());
+        food.setActive(request.getActive());
     }
 
-    @Caching(evict = {
-        @CacheEvict(value = "foods", allEntries = true),
-        @CacheEvict(value = "food", key = "#id"),
-        @CacheEvict(value = "food_proto", key = "#id")
-    })
-    @Transactional
-    public void deleteFood(Long id) {
-        if (!foodRepository.existsById(id)) {
-            throw new ResourceNotFoundException("Food not found with ID: " + id);
-        }
-        foodRepository.deleteById(id);
+    private FoodResponse toResponse(Food food) {
+        FoodResponse response = new FoodResponse();
+        response.setFoodId(food.getFoodId());
+        response.setFoodName(food.getFoodName());
+        response.setFoodDescription(food.getFoodDescription());
+        response.setFoodPrice(food.getFoodPrice());
+        response.setImageUrl(food.getImageUrl());
+        response.setCategory(food.getCategory());
+        response.setActive(food.isActive());
+        return response;
     }
 
-    @Cacheable(value = "food", key = "#id")
-    @Transactional(readOnly = true)
-    public FoodResponse getFood(Long id) {
-        return foodRepository.findById(id)
-            .map(this::toResponse)
-            .orElseThrow(() -> new ResourceNotFoundException("Food not found with ID: " + id));
+    private void saveOutbox(EventType eventType, Food food) {
+        FoodEvent event = FoodEvent.newBuilder()
+                .setEventType(
+                        switch (eventType) {
+                            case CREATED -> FoodEvent.EventType.CREATED;
+                            case UPDATED -> FoodEvent.EventType.UPDATED;
+                            case DELETED -> FoodEvent.EventType.DELETED;
+                        }
+                )
+                .setFood(toProto(food))
+                .build();
+
+        outboxRepository.save(
+                new FoodOutboxEvent(eventType, food.getFoodId(), event.toByteArray())
+        );
     }
 
-    @Cacheable(value = "food_proto", key = "#id")
-    @Transactional(readOnly = true)
-    public FoodResponseProto getFoodAsProto(Long id) {
-        return foodRepository.findById(id)
-            .map(this::toProto)
-            .orElseThrow(() -> new ResourceNotFoundException("Food not found with ID: " + id));
+    private com.shop.foodservice.proto.Food toProto(Food food) {
+        return com.shop.foodservice.proto.Food.newBuilder()
+                .setFoodId(food.getFoodId())
+                .setFoodName(food.getFoodName())
+                .setFoodDescription(food.getFoodDescription())
+                .setFoodPrice(food.getFoodPrice().toPlainString())
+                .setImageUrl(food.getImageUrl())
+                .setCategory(food.getCategory())
+                .setActive(food.isActive())
+                .build();
     }
 }

@@ -2,6 +2,7 @@ package com.shop.foodservice.config;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
@@ -28,7 +29,10 @@ public class SecurityConfig {
         	.csrf(AbstractHttpConfigurer::disable)
         	.sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(auth -> auth
-                .requestMatchers("/foods/**").permitAll() // Open to Gateway, Method Security handles the rest
+                .requestMatchers(HttpMethod.GET, "/foods/**").permitAll()
+                .requestMatchers(HttpMethod.POST, "/foods/**").hasRole("ADMIN")
+                .requestMatchers(HttpMethod.PUT, "/foods/**").hasRole("ADMIN")
+                .requestMatchers(HttpMethod.DELETE, "/foods/**").hasRole("ADMIN")
                 .anyRequest().authenticated()
             )
             .addFilterBefore(gatewayAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);

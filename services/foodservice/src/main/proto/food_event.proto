@@ -1,15 +1,26 @@
 syntax = "proto3";
-package foodservice;
 
-option java_package = "com.shop.foodservice.protobuf";
 option java_multiple_files = true;
+option java_package = "com.shop.foodservice.proto";
+option java_outer_classname = "FoodEventProto";
 
-message FoodResponseProto {
-  int64 foodId = 1;
-  string foodName = 2;
-  string foodDescription = 3;
-  string foodPrice = 4;
-  string imageUrl = 5;
+message Food {
+  int64 food_id = 1;
+  string food_name = 2;
+  string food_description = 3;
+  string food_price = 4;
+  string image_url = 5;
   string category = 6;
   bool active = 7;
+}
+
+message FoodEvent {
+  enum EventType {
+    CREATED = 0;
+    UPDATED = 1;
+    DELETED = 2;
+  }
+
+  EventType event_type = 1;
+  Food food = 2;
 }
