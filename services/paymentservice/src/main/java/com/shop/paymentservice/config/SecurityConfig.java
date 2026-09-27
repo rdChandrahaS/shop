@@ -2,6 +2,7 @@ package com.shop.paymentservice.config;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
@@ -26,11 +27,11 @@ public class SecurityConfig {
             .csrf(csrf -> csrf.disable())
             .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(auth -> auth
-                .requestMatchers("POST", "/payment/webhook").permitAll()
-                .requestMatchers("POST", "/payment/process").hasRole("USER")
-                .requestMatchers("POST", "/payment/refund/request/**").hasRole("ADMIN")
-                .requestMatchers("GET", "/payment/refund/pending").hasRole("ADMIN")
-                .requestMatchers("POST", "/payment/refund/approve/**").hasRole("ADMIN")
+                .requestMatchers(HttpMethod.POST, "/payment/webhook").permitAll()
+                .requestMatchers(HttpMethod.POST, "/payment/process").hasRole("USER")
+                .requestMatchers(HttpMethod.POST, "/payment/refund/request/**").hasRole("ADMIN")
+                .requestMatchers(HttpMethod.GET, "/payment/refund/pending").hasRole("ADMIN")
+                .requestMatchers(HttpMethod.POST, "/payment/refund/approve/**").hasRole("ADMIN")
                 .anyRequest().authenticated())
             .addFilterBefore(gatewayAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
             .build();

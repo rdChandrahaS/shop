@@ -66,3 +66,8 @@ protobuf {
         artifact = 'com.google.protobuf:protoc:4.35.1'
     }
 }
+
+
+tasks.named("jar") {
+    enabled = false
+}
